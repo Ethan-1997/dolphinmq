@@ -1,7 +1,5 @@
 <p align="center">
-  <a>
     <img width="200" src="https://raw.githubusercontent.com/SoulBiuBiuBiu/learn-springcloud/master/images/img.svg">
-  </a>
 </p>
 
 <h1 align="center">DolphinMQ</h1>
