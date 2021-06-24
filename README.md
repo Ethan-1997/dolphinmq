@@ -1,6 +1,6 @@
 <p align="center">
   <a>
-    <img width="200" src="https://gw.alipayobjects.com/zos/rmsportal/KDpgvguMpGfqaHPjicRK.svg">
+    <img width="200" src="http://gitlab.econage.com/af-middleware/dolphinmq/blob/master/images/346D1179-B7AE-4ae2-9A8C-99F2915C1DBC.png">
   </a>
 </p>
 
