@@ -22,14 +22,14 @@ public final class BeanMapUtils {
      * @throws InstantiationException failed to instant JavaBean
      * @throws InvocationTargetException failed to call setters
      */
-    public static final Object toBean(Class<?> type, Map<String, ? extends Object> map)
+    public static final Object toBean(Class<?> type, Map<Object, ? extends Object> map)
             throws IntrospectionException, IllegalAccessException, InstantiationException, InvocationTargetException, NoSuchMethodException {
         BeanInfo beanInfo = Introspector.getBeanInfo(type);
         Object obj =  type.getDeclaredConstructor().newInstance();
         PropertyDescriptor[] propertyDescriptors = beanInfo.getPropertyDescriptors();
         for (int i = 0; i< propertyDescriptors.length; i++) {
             PropertyDescriptor descriptor = propertyDescriptors[i];
-            String propertyName = descriptor.getName();
+            Object propertyName = descriptor.getName();
             if (map.containsKey(propertyName)) {
                 Object value = map.get(propertyName);
                 Object[] args = new Object[1];
@@ -49,14 +49,14 @@ public final class BeanMapUtils {
      * @throws IllegalAccessException failed to instant JavaBean
      * @throws InvocationTargetException failed to call setters
      */
-    public static final Map<String, Object> toMap(Object bean)
+    public static final Map<Object, Object> toMap(Object bean)
             throws IntrospectionException, IllegalAccessException, InvocationTargetException {
-        Map<String, Object> returnMap = new HashMap<String, Object>();
+        Map<Object, Object> returnMap = new HashMap<Object, Object>();
         BeanInfo beanInfo = Introspector.getBeanInfo(bean.getClass());
         PropertyDescriptor[] propertyDescriptors = beanInfo.getPropertyDescriptors();
         for (int i = 0; i< propertyDescriptors.length; i++) {
             PropertyDescriptor descriptor = propertyDescriptors[i];
-            String propertyName = descriptor.getName();
+            Object propertyName = descriptor.getName();
             if (!propertyName.equals("class")) {
                 Method readMethod = descriptor.getReadMethod();
                 Object result = readMethod.invoke(bean, new Object[0]);
