@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.beans.IntrospectionException;
 import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -23,12 +24,15 @@ public class BeanMapUtilsTest {
     void test() {
         Testbean testbean = new Testbean("test1", 12);
         try {
-            Map<Object, Object> map = BeanMapUtils.toMap(testbean);
-            Testbean o = (Testbean) BeanMapUtils.toBean(Testbean.class, map);
+            Map<String, Object> map = BeanMapUtils.toMap(testbean);
+            Map<Object, Object> omap = BeanMapUtils.getObjectObjectMap(map);
+            Testbean o = (Testbean) BeanMapUtils.toBean(Testbean.class, omap);
             int age = o.getAge();
             log.info("age:" + age);
         } catch (IntrospectionException | IllegalAccessException | InvocationTargetException | InstantiationException | NoSuchMethodException e) {
             e.printStackTrace();
         }
     }
+
+
 }

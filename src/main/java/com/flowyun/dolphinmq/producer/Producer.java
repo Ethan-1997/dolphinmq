@@ -1,6 +1,7 @@
 package com.flowyun.dolphinmq.producer;
 
 import com.flowyun.dolphinmq.common.Message;
+import com.flowyun.dolphinmq.utils.BeanMapUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RFuture;
 import org.redisson.api.RStream;
@@ -24,7 +25,7 @@ public class Producer {
      */
     private Integer trimThreashold;
 
-    Producer(RedissonClient client) {
+    public Producer(RedissonClient client) {
         this.client = client;
         this.trimThreashold = 1000;
     }
@@ -37,21 +38,21 @@ public class Producer {
      * @author Barry
      * @since 2021/6/28 15:38
      **/
-    void sendMessageAsync(Message msg) {
+    public void sendMessageAsync(Message msg) {
         stream = client.getStream(msg.getTopic());
-        RFuture<StreamMessageId> sendMessageFuture =
+        RFuture<Void> sendMessageFuture =
                 stream.addAsync(
                         msg.getId(),
-                        StreamAddArgs.entries(msg.getProperties()).trim(TrimStrategy.MAXLEN, trimThreashold));
+                        StreamAddArgs.entries(BeanMapUtils.getObjectObjectMap(msg.getProperties())).trim(TrimStrategy.MAXLEN, trimThreashold));
         sendMessageFuture.thenAccept(res -> {
             log.debug("stream : {} add message:{} success",
                     msg.getTopic(),
                     msg.getProperties());
-        }).exceptionally(excetpion -> {
+        }).exceptionally(exception -> {
             log.debug("stream : {} add message:{} error, exception:{}",
                     msg.getTopic(),
                     msg.getProperties(),
-                    excetpion.getMessage());
+                    exception.getMessage());
             return null;
         });
     }

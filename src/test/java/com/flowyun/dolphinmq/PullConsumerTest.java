@@ -1,6 +1,7 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumer;
+import com.flowyun.dolphinmq.producer.Producer;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -31,7 +32,7 @@ public class PullConsumerTest {
     }
 
     @Test
-    void test() {
+    void consume() {
         PullConsumer<Testbean> pullConsumer = new PullConsumer<Testbean>(
                 redisson,
                 "pullTest",
@@ -44,4 +45,5 @@ public class PullConsumerTest {
             }
         };
     }
+
 }

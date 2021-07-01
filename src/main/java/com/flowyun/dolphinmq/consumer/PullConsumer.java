@@ -166,7 +166,8 @@ public abstract class PullConsumer<T> implements Consumer<T> {
             return;
         }
         try {
-            consume((T)BeanMapUtils.toBean(dtoClass, dtoMap));
+            consume((T) BeanMapUtils.toBean(dtoClass, dtoMap));
+            //todo 设置 Map 的 Entry 过期时间
             checkDuplicateMap.put(id.toString(), null);
         } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
             e.printStackTrace();

@@ -17,18 +17,27 @@ public class Message implements Serializable {
 
     private StreamMessageId id;
     private String topic;
-    private Map<String, String> properties;
+    private Map<String, Object> properties;
+
+
+    {
+        //id自动生成
+        SequenceUtil sq = SequenceUtil.getInstance();
+        long nextId = sq.nextId();
+        this.id = new StreamMessageId(nextId / 4194304, nextId % 4194304);
+    }
 
     public Message() {
     }
 
     public Message(String topic) {
         this.topic = topic;
+
     }
 
     void putProperty(final String name, final String value) {
         if (null == this.properties) {
-            this.properties = new HashMap<String, String>();
+            this.properties = new HashMap<String, Object>();
         }
 
         this.properties.put(name, value);
@@ -56,13 +65,13 @@ public class Message implements Serializable {
         this.putProperty(name, value);
     }
 
-    public String getUserProperty(final String name) {
+    public Object getUserProperty(final String name) {
         return this.getProperty(name);
     }
 
-    public String getProperty(final String name) {
+    public Object getProperty(final String name) {
         if (null == this.properties) {
-            this.properties = new HashMap<String, String>();
+            this.properties = new HashMap<String, Object>();
         }
 
         return this.properties.get(name);
@@ -76,11 +85,11 @@ public class Message implements Serializable {
         this.topic = topic;
     }
 
-    public Map<String, String> getProperties() {
+    public Map<String, Object> getProperties() {
         return properties;
     }
 
-    void setProperties(Map<String, String> properties) {
+    public void setProperties(Map<String, Object> properties) {
         this.properties = properties;
     }
 
