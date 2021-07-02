@@ -1,7 +1,6 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumer;
-import com.flowyun.dolphinmq.producer.Producer;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -12,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.HashSet;
 
 /**
  * @author Barry
@@ -21,6 +21,7 @@ import java.io.IOException;
 public class PullConsumerTest {
     private RedissonClient redisson;
     private Logger logger;
+    PullConsumer<Testbean> pullConsumer;
 
     @BeforeAll
     void config() throws IOException {
@@ -29,15 +30,10 @@ public class PullConsumerTest {
         Config config = new Config();
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
         redisson = Redisson.create(config);
-    }
-
-    @Test
-    void consume() {
-        PullConsumer<Testbean> pullConsumer = new PullConsumer<Testbean>(
+        pullConsumer = new PullConsumer<Testbean>(
                 redisson,
-                "pullTest",
-                "pullgroup",
-                null,
+                "producerTest2",
+                "service",
                 Testbean.class) {
             @Override
             public void consume(Testbean dto) {
@@ -45,5 +41,18 @@ public class PullConsumerTest {
             }
         };
     }
+
+    @Test
+    void consume() {
+        pullConsumer.consumeHealthMessages();
+        while (true){}
+    }
+
+    @Test
+    void checkPendingList(){
+        pullConsumer.checkPendingList();
+        while (true){}
+    }
+
 
 }

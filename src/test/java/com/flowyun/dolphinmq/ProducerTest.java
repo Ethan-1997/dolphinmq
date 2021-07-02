@@ -41,7 +41,7 @@ public class ProducerTest {
     void produce() {
         Producer producer = new Producer(redisson);
         Message msg = new Message();
-        Testbean test = new Testbean("test1", 12);
+        Testbean test = new Testbean("test2", 2);
         msg.setTopic("producerTest2");
         try {
             msg.setProperties(BeanMapUtils.toMap(test));

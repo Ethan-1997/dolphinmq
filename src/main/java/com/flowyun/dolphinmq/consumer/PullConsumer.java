@@ -1,19 +1,17 @@
 package com.flowyun.dolphinmq.consumer;
 
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
-import jodd.util.StringUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.*;
 import org.redisson.api.stream.StreamAddArgs;
+import org.redisson.client.RedisBusyException;
 
 import java.beans.IntrospectionException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -48,9 +46,13 @@ public abstract class PullConsumer<T> implements Consumer<T> {
      */
     private Integer checkPendingListSize;
     /**
-     * 死信计数器门槛
+     * 死信门槛
      */
     private Integer deadLetterThreshold;
+    /**
+     * 认领门槛
+     */
+    private Integer claimThreshold;
 
     private static String DEAD_STREAM_NAME = "DeadStream";
 
@@ -60,25 +62,24 @@ public abstract class PullConsumer<T> implements Consumer<T> {
      * @author Barry
      * @since 2021/6/28 16:23
      **/
-    public PullConsumer(RedissonClient client, String topic, String consumerGroup, String consumer, Class dtoClass) {
+    public PullConsumer(RedissonClient client, String topic, String consumerGroup, Class dtoClass) {
         this.client = client;
         this.consumerGroup = consumerGroup;
-        if (StringUtil.isEmpty(consumer)) {
-            try {
-                this.consumer= InetAddress.getLocalHost().toString();
-            } catch (UnknownHostException e) {
-                e.printStackTrace();
-            }
+        try {
+            this.consumer = InetAddress.getLocalHost().toString();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
         }
-        else{ this.consumer = consumer;}
 
         this.topic = topic;
         this.dtoClass = dtoClass;
         this.fetchMessageSize = 5;
         this.pendingListIdleThreshold = 60;
         this.checkPendingListSize = 1000;
-        this.deadLetterThreshold = 8;
+        this.deadLetterThreshold = 17;
+        this.claimThreshold = 10;
         initStream();
+        createConsumerGroup(true);
     }
 
     private void initStream() {
@@ -86,25 +87,44 @@ public abstract class PullConsumer<T> implements Consumer<T> {
     }
 
     /**
-     * 检查PendingList
-     * <功能描述>
+     * 检查PendingList(进行消费偶尔失败、消费一直失败、死信情况处理)
+     * todo 开一个线程专门负责
      *
      * @author Barry
      * @since 2021/6/28 17:11
      **/
-    private void checkPendingList() {
-        List<PendingEntry> pendingEntryList =
-                stream.listPending(
-                        consumerGroup,
-                        consumer,
-                        StreamMessageId.MIN,
-                        StreamMessageId.MAX,
-                        pendingListIdleThreshold,
-                        TimeUnit.SECONDS,
-                        checkPendingListSize);
-        consumeTimeoutMessages(pendingEntryList);
-    }
+    public void checkPendingList() {
+        RFuture<List<PendingEntry>> future = stream.listPendingAsync(
+                consumerGroup,
+                consumer,
+                StreamMessageId.MIN,
+                StreamMessageId.MAX,
+                pendingListIdleThreshold,
+                TimeUnit.SECONDS,
+                checkPendingListSize);
+        future.thenAccept(pendingEntryList -> {
 
+            Set<StreamMessageId> deadLetterIds = new HashSet<>();
+            Set<StreamMessageId> claimIds = new HashSet<>();
+            Set<StreamMessageId> idleIds = new HashSet<>();
+            for (PendingEntry entry :
+                    pendingEntryList) {
+                long cnt = entry.getLastTimeDelivered();
+                if (cnt >= this.deadLetterThreshold) {
+                    deadLetterIds.add(entry.getId());
+                } else if (cnt >= this.claimThreshold) {
+                    claimIds.add(entry.getId());
+                } else {
+                    idleIds.add(entry.getId());
+                }
+            }
+            consumeIdleMessages(idleIds);
+            consumeDeadLetterMessages(deadLetterIds);
+            //todo  consumeClaimIds
+        }).exceptionally(exception -> {
+            return null;
+        });
+    }
 
     /**
      * 正常消费fetchMessageSize条数据
@@ -112,38 +132,86 @@ public abstract class PullConsumer<T> implements Consumer<T> {
      * @author Barry
      * @since 2021/6/28 17:08
      **/
-    private void consumeHealthMessages() {
+    public void consumeHealthMessages() {
         RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
                 stream.readGroupAsync(consumerGroup, consumer, fetchMessageSize, StreamMessageId.NEVER_DELIVERED);
         future.thenAccept(this::consumeMessages).exceptionally(exception -> {
+            log.info("consumeHealthMessages Exception:{}", exception.getMessage());
+            exception.printStackTrace();
             return null;
         });
     }
 
     /**
-     * 消费PendingList超时、宕机、丢失的消息
+     * 消费空闲超时信息进行重传
      *
-     * @param pendingEntryList 超时列表
+     * @param idleIds 超时列表
      * @author Barry
      * @since 2021/6/28 18:36
      **/
-    private void consumeTimeoutMessages(List<PendingEntry> pendingEntryList) {
-        checkDuplicateMap = client.getMap(consumerGroup);
-
-        if (pendingEntryList == null || pendingEntryList.size() == 0) {
+    private void consumeIdleMessages(Set<StreamMessageId> idleIds) {
+        if (idleIds == null || idleIds.size() == 0) {
             return;
         }
-        //todo 这个线程只负责检查待处理消息列表，并将空闲的消息分配给看似活跃的消费者。XCLAIM
-        // 可以通过Redis Stream的可观察特性获得活跃的消费者。
+
+//        checkDuplicateMap = client.getMap(consumerGroup); //todo 重复消费问题
         RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
-                stream.readGroupAsync(consumerGroup, consumer, pendingEntryList.stream().map(PendingEntry::getId).toArray(StreamMessageId[]::new));
-        future.thenAccept(this::consumeMessages).exceptionally(exception -> {
+                stream.readGroupAsync(consumerGroup, consumer, StreamMessageId.ALL);
+        future.thenAccept(res -> {
+            Map<StreamMessageId, Map<Object, Object>> messages = res.entrySet().stream().
+                    filter(row -> idleIds.contains(row.getKey())).
+                    collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            consumeMessages(messages);
+        }).exceptionally(exception -> {
+            log.info(exception.getMessage());
             return null;
         });
     }
 
+    /**
+     * 检查消费一直消费失败的信息（达到最大重试次数后会加入死信队列、通知管理员）
+     * //todo ack 并发优化
+     *
+     * @param deadLetterIds
+     * @author Barry
+     * @since 2021/6/29 11:06
+     */
+    private void consumeDeadLetterMessages(Set<StreamMessageId> deadLetterIds) {
+        if (deadLetterIds == null || deadLetterIds.size() == 0) {
+            return;
+        }
+        deadStream = client.getStream(DEAD_STREAM_NAME);
+        for (StreamMessageId id :
+                deadLetterIds) {
+            RFuture<Map<StreamMessageId, Map<Object, Object>>> future = stream.rangeAsync(id, id);
+            future.thenAccept(range -> {
+                if (range != null && range.size() != 0) {
+                    Map<Object, Object> map = range.get(id);
+                    RFuture<Void> addAsync = deadStream.addAsync(StreamMessageId.AUTO_GENERATED, StreamAddArgs.entries(map));
+                    addAsync.thenAccept(res -> {
+                        stream.removeAsync(id);
+                        stream.ackAsync(consumerGroup, id);
+                    }).exceptionally(exception -> {
+                        return null;
+                    });
+                }
+            }).exceptionally(exception -> {
+                return null;
+            });
+        }
+        //todo 通知管理员
+
+    }
+
+    /**
+     * 消费单条消息
+     *
+     * @param res 消息
+     * @author Barry
+     * @since 2021/7/2 11:39
+     **/
     private void consumeMessages(Map<StreamMessageId, Map<Object, Object>> res) {
-        checkDuplicateMap = client.getMap(consumerGroup);
+//        checkDuplicateMap = client.getMap(consumerGroup);
         List<StreamMessageId> ackList = new ArrayList<>();
         for (Map.Entry<StreamMessageId, Map<Object, Object>> entry :
                 res.entrySet()) {
@@ -156,25 +224,25 @@ public abstract class PullConsumer<T> implements Consumer<T> {
     /**
      * 消费单条数据
      * 判重(一般消费者需要根据业务ID做判重表，消息过的就不再消费消费等幂性存在Redis中进行查重)
+     *
      * @param id     消息ID
      * @param dtoMap Map格式数据
      * @author Barry
      * @since 2021/6/28 17:09
      **/
     private void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap) {
-        if (checkDuplicateMap.containsKey(id.toString())) {
-            return;
-        }
+//        if (checkDuplicateMap.containsKey(id.toString())) {
+//            return;
+//        }
         try {
             consume((T) BeanMapUtils.toBean(dtoClass, dtoMap));
             //todo 设置 Map 的 Entry 过期时间
-            checkDuplicateMap.put(id.toString(), null);
+//            checkDuplicateMap.put(id.toString(), null);
         } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
             e.printStackTrace();
         }
 
     }
-
 
     /**
      * 批量ack
@@ -184,42 +252,26 @@ public abstract class PullConsumer<T> implements Consumer<T> {
      * @since 2021/6/28 17:06
      **/
     private void batchAck(StreamMessageId... ids) {
-        stream.ack(consumerGroup, ids);
-    }
-
-    public void readMessagesAsync() {
-        checkPendingList();//todo 定时器进行检查
-        checkConsumeErrorMessages();//todo 定时器进行检查
-        consumeHealthMessages();//todo 1.定时进行消费   2.间隔时间指数级增长 Pull长轮询优化
+        stream.ackAsync(consumerGroup, ids);
     }
 
     /**
-     * 检查消费一直消费失败的信息（达到最大重试次数后会加入死信队列、通知管理员）
+     * 创建消费者组
      *
+     * @param startFromHead 是否从头开始订阅
      * @author Barry
-     * @since 2021/6/29 11:06
+     * @since 2021/7/1 14:36
      **/
-    private void checkConsumeErrorMessages() {
-        List<PendingEntry> entries = stream.listPending(consumerGroup, consumer, StreamMessageId.MIN, StreamMessageId.MAX, checkPendingListSize);
-        List<PendingEntry> deadLetterEntries = entries.stream()
-                .filter(entry -> entry.getLastTimeDelivered() >= deadLetterThreshold)
-                .collect(Collectors.toList());
-
-        deadStream = client.getStream(DEAD_STREAM_NAME);
-
-        for (PendingEntry entry :
-                deadLetterEntries) {
-            Map<StreamMessageId, Map<Object, Object>> range = stream.range(entry.getId(), entry.getId());
-            if (range != null && range.size() != 0) {
-                Map<Object, Object> map = range.get(entry.getId());
-                deadStream.add(entry.getId(), StreamAddArgs.entries(map));
-                stream.remove(entry.getId());
-            }
+    private void createConsumerGroup(boolean startFromHead) {
+        StreamMessageId id = StreamMessageId.NEWEST;
+        if (startFromHead) {
+            id = StreamMessageId.ALL;
         }
-
-        //todo 通知管理员
-
+        try {
+            stream.createGroupAsync(consumerGroup, id);
+        } catch (RedisBusyException e) {
+            log.info(e.getMessage());
+        }
     }
-
 
 }
