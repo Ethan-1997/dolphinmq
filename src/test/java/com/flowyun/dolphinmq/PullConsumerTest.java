@@ -31,7 +31,7 @@ public class PullConsumerTest {
         Topic<Testbean> topic = new Topic<>();
         pullConsumer = new PullConsumer<>(
                 redisson,
-                "producerTest2",
+                "t1",
                 "service",
                 Testbean.class);
         pullConsumer.setTopic(topic);
@@ -55,6 +55,7 @@ public class PullConsumerTest {
         while (true) {
         }
     }
+
 
 
 }

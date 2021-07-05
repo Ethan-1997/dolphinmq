@@ -14,6 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  *通用：
@@ -104,5 +105,40 @@ public class RedissonTest {
         RStream<Object, Object> stream = redisson.getStream("mystream");
         List<PendingEntry> entries = stream.listPending("mygroup", "alice", StreamMessageId.MIN, StreamMessageId.MAX, 10);
         logger.info(entries.get(0).toString());
+    }
+
+    @Test
+    void testMap(){
+        RMap<Object, Object> map = redisson.getMap("testMap");
+        logger.info("get1:{}",map.get("test1"));
+        map.put("test1",123);
+        logger.info("get2:{}",map.get("test1"));
+    }
+
+    @Test
+    void testLock(){
+        RLock lock = redisson.getLock("anyLock");
+// 最常见的使用方法
+        boolean res = false;
+        try {
+            res = lock.tryLock(100, 10, TimeUnit.SECONDS);
+            if (res) {
+//                lock.unlock();
+            }
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
+
+    @Test
+    void tryGetLock(){
+        RLock lock = redisson.getLock("anyLock");
+// 最常见的使用方法
+        try {
+            lock.tryLock(100, 10, TimeUnit.SECONDS);
+            logger.info("getLock!");
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 }

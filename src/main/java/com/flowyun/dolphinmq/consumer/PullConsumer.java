@@ -1,6 +1,7 @@
 package com.flowyun.dolphinmq.consumer;
 
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
+import io.netty.util.internal.StringUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.*;
@@ -12,6 +13,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
+import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -78,7 +80,7 @@ public class PullConsumer<T> {
         this.pendingListIdleThreshold = 60;
         this.checkPendingListSize = 1000;
         this.deadLetterThreshold = 17;
-        this.claimThreshold = 3600;
+        this.claimThreshold = 10;
         initStream();
         createConsumerGroup(true);
         topic = new Topic<>();
@@ -128,11 +130,13 @@ public class PullConsumer<T> {
             return null;
         });
     }
+
     /**
      * 认领空闲过久的消息
-     * @author  Barry
-     * @since  2021/7/5 16:44
+     *
      * @param claimIds ID集合
+     * @author Barry
+     * @since 2021/7/5 16:44
      **/
     public void consumeClaimIds(Set<StreamMessageId> claimIds) {
         for (StreamMessageId id :
@@ -169,7 +173,6 @@ public class PullConsumer<T> {
             return;
         }
 
-//        checkDuplicateMap = client.getMap(consumerGroup); //todo 重复消费问题
         RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
                 stream.readGroupAsync(consumerGroup, consumer, StreamMessageId.ALL);
         future.thenAccept(res -> {
@@ -226,7 +229,6 @@ public class PullConsumer<T> {
      * @since 2021/7/2 11:39
      **/
     private void consumeMessages(Map<StreamMessageId, Map<Object, Object>> res) {
-//        checkDuplicateMap = client.getMap(consumerGroup);
         List<StreamMessageId> ackList = new ArrayList<>();
         for (Map.Entry<StreamMessageId, Map<Object, Object>> entry :
                 res.entrySet()) {
@@ -239,22 +241,32 @@ public class PullConsumer<T> {
     /**
      * 消费单条数据
      * 判重(一般消费者需要根据业务ID做判重表，消息过的就不再消费消费等幂性存在Redis中进行查重)
-     *
+     * 分布式锁 保证查看、消费、删除的原子性
      * @param id     消息ID
      * @param dtoMap Map格式数据
      * @author Barry
      * @since 2021/6/28 17:09
      **/
     private void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap) {
-//        if (checkDuplicateMap.containsKey(id.toString())) {
-//            return;
-//        }
+        RLock lock = client.getLock(id.toString());
         try {
-            topic.setDto((T) BeanMapUtils.toBean(dtoClass, dtoMap));
-            //todo 设置 Map 的 Entry 过期时间
-//            checkDuplicateMap.put(id.toString(), null);
-        } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
-            e.printStackTrace();
+            RFuture<Boolean> tryAsync = lock.tryLockAsync(100, 10, TimeUnit.SECONDS);
+            tryAsync.thenAccept(tmp->{
+                RBucket<String> bucket = client.getBucket(id.toString());
+                if (StringUtil.isNullOrEmpty(bucket.get())) {
+                    try {
+                        topic.setDto((T) BeanMapUtils.toBean(dtoClass, dtoMap));
+                        bucket.delete();
+                    } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).exceptionally(ex->{
+                return null;
+            });
+
+        } finally {
+            lock.unlockAsync();
         }
 
     }

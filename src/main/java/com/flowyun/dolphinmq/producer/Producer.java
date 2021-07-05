@@ -3,12 +3,11 @@ package com.flowyun.dolphinmq.producer;
 import com.flowyun.dolphinmq.common.Message;
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RFuture;
-import org.redisson.api.RStream;
-import org.redisson.api.RedissonClient;
-import org.redisson.api.StreamMessageId;
+import org.redisson.api.*;
 import org.redisson.api.stream.StreamAddArgs;
 import org.redisson.api.stream.TrimStrategy;
+
+import java.util.concurrent.TimeUnit;
 
 /**
  * 生产者基类
@@ -39,21 +38,31 @@ public class Producer {
      * @since 2021/6/28 15:38
      **/
     public void sendMessageAsync(Message msg) {
-        stream = client.getStream(msg.getTopic());
-        RFuture<Void> sendMessageFuture =
-                stream.addAsync(
-                        msg.getId(),
-                        StreamAddArgs.entries(BeanMapUtils.getObjectObjectMap(msg.getProperties())).trim(TrimStrategy.MAXLEN, trimThreashold));
-        sendMessageFuture.thenAccept(res -> {
-            log.debug("stream : {} add message:{} success",
-                    msg.getTopic(),
-                    msg.getProperties());
-        }).exceptionally(exception -> {
-            log.debug("stream : {} add message:{} error, exception:{}",
-                    msg.getTopic(),
-                    msg.getProperties(),
-                    exception.getMessage());
+        RBucket<Object> bucket = client.getBucket(msg.getId().toString());
+        bucket.expire(15, TimeUnit.MINUTES);
+        RFuture<Void> setAsync = bucket.setAsync(msg.getId().toString());
+        setAsync.thenAccept(tmp -> {
+            stream = client.getStream(msg.getTopic());
+            RFuture<Void> sendMessageFuture =
+                    stream.addAsync(
+                            msg.getId(),
+                            StreamAddArgs.entries(BeanMapUtils.getObjectObjectMap(msg.getProperties())).trim(TrimStrategy.MAXLEN, trimThreashold));
+            sendMessageFuture.thenAccept(res -> {
+                log.debug("stream : {} add message:{} success",
+                        msg.getTopic(),
+                        msg.getProperties());
+            }).exceptionally(exception -> {
+                log.debug("stream : {} add message:{} error, exception:{}",
+                        msg.getTopic(),
+                        msg.getProperties(),
+                        exception.getMessage());
+                return null;
+            });
+        }).exceptionally(ex -> {
+            log.debug("create flag false:{}",
+                    ex.getMessage());
             return null;
         });
+
     }
 }

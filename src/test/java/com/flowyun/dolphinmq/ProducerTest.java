@@ -38,16 +38,17 @@ public class ProducerTest {
     }
 
     @Test
-    void produce() {
+    void produce() throws InterruptedException {
         Producer producer = new Producer(redisson);
         Message msg = new Message();
         Testbean test = new Testbean("test2", 2);
-        msg.setTopic("producerTest2");
+        msg.setTopic("t1");
         try {
             msg.setProperties(BeanMapUtils.toMap(test));
         } catch (IntrospectionException | IllegalAccessException | InvocationTargetException e) {
             e.printStackTrace();
         }
         producer.sendMessageAsync(msg);
+        Thread.sleep(1000 * 60 * 60);
     }
 }
