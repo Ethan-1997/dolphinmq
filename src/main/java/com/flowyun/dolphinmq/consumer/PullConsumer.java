@@ -109,23 +109,19 @@ public class PullConsumer<T> {
         future.thenAccept(pendingEntryList -> {
 
             Set<StreamMessageId> deadLetterIds = new HashSet<>();
-            Set<StreamMessageId> claimIds = new HashSet<>();
             Set<StreamMessageId> idleIds = new HashSet<>();
             for (PendingEntry entry :
                     pendingEntryList) {
                 long cnt = entry.getLastTimeDelivered();
-                long idleTime = entry.getIdleTime();
                 if (cnt >= this.deadLetterThreshold) {
                     deadLetterIds.add(entry.getId());
-                } else if (idleTime >= this.claimThreshold) {
-                    claimIds.add(entry.getId());
                 } else {
                     idleIds.add(entry.getId());
                 }
             }
             consumeIdleMessages(idleIds);
             consumeDeadLetterMessages(deadLetterIds);
-            consumeClaimIds(claimIds);
+            ClaimIdleConsumer();
         }).exceptionally(exception -> {
             return null;
         });
@@ -134,15 +130,58 @@ public class PullConsumer<T> {
     /**
      * 认领空闲过久的消息
      *
-     * @param claimIds ID集合
      * @author Barry
      * @since 2021/7/5 16:44
      **/
-    public void consumeClaimIds(Set<StreamMessageId> claimIds) {
-        for (StreamMessageId id :
-                claimIds) {
-            stream.claimAsync(consumerGroup, consumer, this.claimThreshold, TimeUnit.MILLISECONDS, id, id);
+    public void ClaimIdleConsumer() {
+        RFuture<PendingResult> infoAsync = stream.getPendingInfoAsync(consumerGroup);
+        infoAsync.thenAccept(res -> {
+            Map<String, Long> consumerNames = res.getConsumerNames();
+            if (consumerNames.size() <= 1) {
+                return;
+            }
+
+            RFuture<List<PendingEntry>> future = stream.listPendingAsync(
+                    consumerGroup,
+                    consumer,
+                    StreamMessageId.MIN,
+                    StreamMessageId.MAX,
+                    claimThreshold,
+                    TimeUnit.MILLISECONDS,
+                    checkPendingListSize);
+            future.thenAccept(pendingEntryList -> {
+                List<PendingEntry> pendingEntries = pendingEntryList.stream()
+                        .filter(entry -> entry.getLastTimeDelivered() >= this.deadLetterThreshold)
+                        .collect(Collectors.toList());
+                String randConsumerName = getRandConsumerName(consumerNames);
+                claim(pendingEntries, randConsumerName);
+            }).exceptionally(exception -> {
+                log.info("listPendingAsync Error:{}", exception.getMessage());
+                return null;
+            });
+
+        }).exceptionally(ex -> {
+            log.info("Claim Error:{}", ex.getMessage());
+            return null;
+        });
+    }
+
+    private void claim(List<PendingEntry> pendingEntries, String randConsumerName) {
+        for (PendingEntry entry :
+                pendingEntries) {
+            StreamMessageId id = entry.getId();
+            stream.claimAsync(consumerGroup, randConsumerName, this.claimThreshold, TimeUnit.MILLISECONDS, id, id);
         }
+    }
+
+    private String getRandConsumerName(Map<String, Long> consumerNames) {
+        List<Map.Entry<String, Long>> entries = consumerNames.entrySet().stream()
+                .filter(entry -> entry.getKey().equals(consumer))
+                .collect(Collectors.toList());
+
+        Random rand = new Random();
+        int i = rand.nextInt(entries.size());
+        return entries.get(i).getKey();
     }
 
     /**
@@ -242,6 +281,7 @@ public class PullConsumer<T> {
      * 消费单条数据
      * 判重(一般消费者需要根据业务ID做判重表，消息过的就不再消费消费等幂性存在Redis中进行查重)
      * 分布式锁 保证查看、消费、删除的原子性
+     *
      * @param id     消息ID
      * @param dtoMap Map格式数据
      * @author Barry
@@ -251,7 +291,7 @@ public class PullConsumer<T> {
         RLock lock = client.getLock(id.toString());
         try {
             RFuture<Boolean> tryAsync = lock.tryLockAsync(100, 10, TimeUnit.SECONDS);
-            tryAsync.thenAccept(tmp->{
+            tryAsync.thenAccept(tmp -> {
                 RBucket<String> bucket = client.getBucket(id.toString());
                 if (StringUtil.isNullOrEmpty(bucket.get())) {
                     try {
@@ -261,7 +301,7 @@ public class PullConsumer<T> {
                         e.printStackTrace();
                     }
                 }
-            }).exceptionally(ex->{
+            }).exceptionally(ex -> {
                 return null;
             });
 
