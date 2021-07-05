@@ -23,15 +23,16 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Data
-public abstract class PullConsumer<T> implements Consumer<T> {
+public class PullConsumer<T>  {
     private RedissonClient client;
     private RStream<Object, Object> stream;
     private RStream<Object, Object> deadStream;
     private String consumerGroup;
     private String consumer;
-    private String topic;
+    private String topicName;
     RMap<Object, Object> checkDuplicateMap;
     private Class dtoClass;
+    private Topic<T> topic;
 
     /**
      * 每次拉取数据的量
@@ -62,7 +63,7 @@ public abstract class PullConsumer<T> implements Consumer<T> {
      * @author Barry
      * @since 2021/6/28 16:23
      **/
-    public PullConsumer(RedissonClient client, String topic, String consumerGroup, Class dtoClass) {
+    public PullConsumer(RedissonClient client, String topicName, String consumerGroup, Class dtoClass) {
         this.client = client;
         this.consumerGroup = consumerGroup;
         try {
@@ -71,7 +72,7 @@ public abstract class PullConsumer<T> implements Consumer<T> {
             e.printStackTrace();
         }
 
-        this.topic = topic;
+        this.topicName = topicName;
         this.dtoClass = dtoClass;
         this.fetchMessageSize = 5;
         this.pendingListIdleThreshold = 60;
@@ -80,10 +81,11 @@ public abstract class PullConsumer<T> implements Consumer<T> {
         this.claimThreshold = 10;
         initStream();
         createConsumerGroup(true);
+        topic =new Topic<>();
     }
 
     private void initStream() {
-        stream = client.getStream(topic);
+        stream = client.getStream(topicName);
     }
 
     /**
@@ -235,7 +237,7 @@ public abstract class PullConsumer<T> implements Consumer<T> {
 //            return;
 //        }
         try {
-            consume((T) BeanMapUtils.toBean(dtoClass, dtoMap));
+            topic.setDto((T) BeanMapUtils.toBean(dtoClass, dtoMap));
             //todo 设置 Map 的 Entry 过期时间
 //            checkDuplicateMap.put(id.toString(), null);
         } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {

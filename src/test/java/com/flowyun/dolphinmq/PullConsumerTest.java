@@ -1,6 +1,7 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumer;
+import com.flowyun.dolphinmq.consumer.Topic;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -11,7 +12,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.HashSet;
 
 /**
  * @author Barry
@@ -24,34 +24,38 @@ public class PullConsumerTest {
     PullConsumer<Testbean> pullConsumer;
 
     @BeforeAll
-    void config() throws IOException {
+    void config() {
         logger = LoggerFactory.getLogger(RedissonTest.class);
         // 1. Create config object
         Config config = new Config();
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
         redisson = Redisson.create(config);
-        pullConsumer = new PullConsumer<Testbean>(
+        Topic<Testbean> topic = new Topic<>();
+        pullConsumer = new PullConsumer<>(
                 redisson,
                 "producerTest2",
                 "service",
-                Testbean.class) {
-            @Override
-            public void consume(Testbean dto) {
-                logger.info("dto:{}", dto.toString());
-            }
-        };
+                Testbean.class);
+        pullConsumer.setTopic(topic);
+
+        new HiListener(topic);
+        new Hi2Listener(topic);
+
+//        topic.attach();
     }
 
     @Test
     void consume() {
         pullConsumer.consumeHealthMessages();
-        while (true){}
+        while (true) {
+        }
     }
 
     @Test
-    void checkPendingList(){
+    void checkPendingList() {
         pullConsumer.checkPendingList();
-        while (true){}
+        while (true) {
+        }
     }
 
 
