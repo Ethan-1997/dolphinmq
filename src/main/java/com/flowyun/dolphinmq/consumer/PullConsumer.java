@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Data
-public class PullConsumer<T>  {
+public class PullConsumer<T> {
     private RedissonClient client;
     private RStream<Object, Object> stream;
     private RStream<Object, Object> deadStream;
@@ -78,10 +78,10 @@ public class PullConsumer<T>  {
         this.pendingListIdleThreshold = 60;
         this.checkPendingListSize = 1000;
         this.deadLetterThreshold = 17;
-        this.claimThreshold = 10;
+        this.claimThreshold = 3600;
         initStream();
         createConsumerGroup(true);
-        topic =new Topic<>();
+        topic = new Topic<>();
     }
 
     private void initStream() {
@@ -112,9 +112,10 @@ public class PullConsumer<T>  {
             for (PendingEntry entry :
                     pendingEntryList) {
                 long cnt = entry.getLastTimeDelivered();
+                long idleTime = entry.getIdleTime();
                 if (cnt >= this.deadLetterThreshold) {
                     deadLetterIds.add(entry.getId());
-                } else if (cnt >= this.claimThreshold) {
+                } else if (idleTime >= this.claimThreshold) {
                     claimIds.add(entry.getId());
                 } else {
                     idleIds.add(entry.getId());
@@ -122,10 +123,22 @@ public class PullConsumer<T>  {
             }
             consumeIdleMessages(idleIds);
             consumeDeadLetterMessages(deadLetterIds);
-            //todo  consumeClaimIds
+            consumeClaimIds(claimIds);
         }).exceptionally(exception -> {
             return null;
         });
+    }
+    /**
+     * 认领空闲过久的消息
+     * @author  Barry
+     * @since  2021/7/5 16:44
+     * @param claimIds ID集合
+     **/
+    public void consumeClaimIds(Set<StreamMessageId> claimIds) {
+        for (StreamMessageId id :
+                claimIds) {
+            stream.claimAsync(consumerGroup, consumer, this.claimThreshold, TimeUnit.MILLISECONDS, id, id);
+        }
     }
 
     /**
