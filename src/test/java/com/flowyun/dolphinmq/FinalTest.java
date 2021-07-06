@@ -3,6 +3,7 @@ package com.flowyun.dolphinmq;
 import com.flowyun.dolphinmq.consumer.PullConsumerClient;
 import com.flowyun.dolphinmq.consumer.SubscriptionData;
 import com.flowyun.dolphinmq.consumer.TopicListener;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
@@ -16,9 +17,9 @@ import org.slf4j.Logger;
  * @author Barry
  * @since 2021/7/6 15:09
  */
+@Slf4j
 public class FinalTest {
     private RedissonClient redisson;
-    private Logger logger;
     PullConsumerClient pullConsumerClient;
 
     @Test
@@ -39,10 +40,13 @@ public class FinalTest {
         t1.registerMessageListener(new TopicListener<Testbean>() {
             @Override
             public void consume(Testbean dto) {
-                logger.info("dto:{}", dto);
+                log.info("dto:{}", dto);
             }
         });
 
         pullConsumerClient.start();
+        while (true){
+
+        }
     }
 }

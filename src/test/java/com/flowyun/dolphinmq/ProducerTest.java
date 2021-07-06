@@ -33,7 +33,7 @@ public class ProducerTest {
     void produce() throws InterruptedException {
         Producer producer = new Producer(redisson);
         Message msg = new Message();
-        Testbean test = new Testbean("test2", 2);
+        Testbean test = new Testbean("wwww", 13);
         msg.setTopic("t1");
         try {
             msg.setProperties(BeanMapUtils.toMap(test));
