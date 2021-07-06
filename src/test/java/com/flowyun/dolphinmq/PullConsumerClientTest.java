@@ -3,14 +3,24 @@ package com.flowyun.dolphinmq;
 import com.flowyun.dolphinmq.consumer.PullConsumerClient;
 import com.flowyun.dolphinmq.consumer.SubscriptionData;
 import com.flowyun.dolphinmq.consumer.TopicListener;
+import com.flowyun.dolphinmq.utils.BeanMapUtils;
+import jodd.util.collection.MapEntry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
+import org.redisson.api.StreamMessageId;
 import org.redisson.config.Config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.beans.IntrospectionException;
+import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author Barry
@@ -34,7 +44,7 @@ public class PullConsumerClientTest {
                 redisson,
                 "service"
         );
-        SubscriptionData<Testbean> t1 = pullConsumerClient.subscribe("t1",Testbean.class);
+        SubscriptionData<Testbean> t1 = pullConsumerClient.subscribe("t1", Testbean.class);
 
         HiListener hiListener = new HiListener();
         Hi2Listener hi2Listener = new Hi2Listener();
@@ -55,6 +65,29 @@ public class PullConsumerClientTest {
         pullConsumerClient.checkPendingList();
         while (true) {
         }
+    }
+
+
+    @Test
+    void testIdempotent() {
+
+        try {
+            Map<Object, Object> hhhh = BeanMapUtils.toMap(new Testbean("hhhh", 23)).
+                    entrySet().stream().collect(Collectors.toMap(o -> (Object) o, e -> e));
+            pullConsumerClient.consumeMessage(
+                    new StreamMessageId(336715923374l, 2l),
+                    hhhh,
+                    new SubscriptionData<Object>("t1", redisson, Testbean.class));
+        } catch (IntrospectionException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        }
+        while (true) {
+        }
+
     }
 
 

@@ -307,35 +307,38 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/6/28 17:09
      **/
-    private void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, SubscriptionData<Object> subscriptionData) {
-//        RLock lock = client.getLock(id.toString());
-//        try {
-//            RFuture<Boolean> tryAsync = lock.tryLockAsync(100, 10, TimeUnit.SECONDS);
-//            tryAsync.thenAccept(tmp -> {
-//                RBucket<String> bucket = client.getBucket(id.toString());
-//                if (StringUtil.isNullOrEmpty(bucket.get())) {
-//                    try {
-//                        subscriptionData.setDto(BeanMapUtils.toBean(subscriptionData.getDto().getClass(), dtoMap));
-//                        stream.ackAsync(consumerGroup, id);
-//                        bucket.delete();
-//                    } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
-//                        e.printStackTrace();
-//                    }
-//                }
-//            }).exceptionally(ex -> {
-//                ex.printStackTrace();
-//                return null;
-//            });
-//
-//        } finally {
-//            lock.unlockAsync();
-//        }
+    public void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, SubscriptionData<Object> subscriptionData) {
         RStream<Object, Object> stream = subscriptionData.getStream();
+        String lockName = consumerGroup + id.toString();
+        RLock lock = client.getLock(lockName);
         try {
-            subscriptionData.setDto(BeanMapUtils.toBean(subscriptionData.getDtoClazz(), dtoMap));
-            stream.ackAsync(consumerGroup, id);
-        } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
-            e.printStackTrace();
+            RFuture<Boolean> tryAsync = lock.tryLockAsync(100, 10, TimeUnit.SECONDS);
+            tryAsync.thenAccept(tmp -> {
+                RBucket<String> bucket = client.getBucket("bucket" + lockName);
+                RFuture<String> bucketAsync = bucket.getAsync();
+                bucketAsync.thenAccept(bucketRes -> {
+                    if (StringUtil.isNullOrEmpty(bucketRes)) {
+                        try {
+                            subscriptionData.setDto(BeanMapUtils.toBean(subscriptionData.getDtoClazz(), dtoMap));
+                            stream.ackAsync(consumerGroup, id);
+                            bucket.setAsync("consumed");
+                            bucket.expireAsync(30, TimeUnit.MINUTES);
+                        } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }).exceptionally(ex -> {
+                    ex.printStackTrace();
+                    return null;
+                });
+
+            }).exceptionally(ex -> {
+                ex.printStackTrace();
+                return null;
+            });
+
+        } finally {
+            lock.unlockAsync();
         }
     }
 
