@@ -8,7 +8,11 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Map;
-
+/**
+ * Bean和Map类型转换工具类
+ * @author  Barry
+ * @since  2021/7/6 10:24
+ **/
 public final class BeanMapUtils {
 
     /**

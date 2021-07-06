@@ -1,6 +1,5 @@
 package com.flowyun.dolphinmq;
 
-import com.flowyun.dolphinmq.consumer.Topic;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -12,12 +11,14 @@ import org.junit.jupiter.api.Test;
  */
 public class TopicTest {
     @Test
-    void test(){
-        Topic<Testbean> topic = new Topic<>();
-        new HiListener(topic);
-        new Hi2Listener(topic);
+    void test() {
 
-        topic.setDto(new Testbean("123", 12));
+    }
+
+    @Test
+    void testClass() {
+        Object o = new Testbean("123", 12);
+        System.out.printf(o.getClass().toString());
     }
 
 }

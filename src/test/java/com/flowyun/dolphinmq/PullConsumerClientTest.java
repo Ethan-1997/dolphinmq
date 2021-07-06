@@ -1,7 +1,8 @@
 package com.flowyun.dolphinmq;
 
-import com.flowyun.dolphinmq.consumer.PullConsumer;
-import com.flowyun.dolphinmq.consumer.Topic;
+import com.flowyun.dolphinmq.consumer.PullConsumerClient;
+import com.flowyun.dolphinmq.consumer.SubscriptionData;
+import com.flowyun.dolphinmq.consumer.TopicListener;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -16,10 +17,10 @@ import org.slf4j.LoggerFactory;
  * @since 2021/6/30 19:52
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-public class PullConsumerTest {
+public class PullConsumerClientTest {
     private RedissonClient redisson;
     private Logger logger;
-    PullConsumer<Testbean> pullConsumer;
+    PullConsumerClient pullConsumerClient;
 
     @BeforeAll
     void config() {
@@ -28,34 +29,33 @@ public class PullConsumerTest {
         Config config = new Config();
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
         redisson = Redisson.create(config);
-        Topic<Testbean> topic = new Topic<>();
-        pullConsumer = new PullConsumer<>(
+
+        pullConsumerClient = new PullConsumerClient(
                 redisson,
-                "t1",
-                "service",
-                Testbean.class);
-        pullConsumer.setTopic(topic);
+                "service"
+        );
+        SubscriptionData<Testbean> t1 = pullConsumerClient.subscribe("t1",Testbean.class);
 
-        new HiListener(topic);
-        new Hi2Listener(topic);
-
+        HiListener hiListener = new HiListener();
+        Hi2Listener hi2Listener = new Hi2Listener();
+        t1.registerMessageListener(hiListener);
+        t1.registerMessageListener(hi2Listener);
 //        topic.attach();
     }
 
     @Test
     void consume() {
-        pullConsumer.consumeHealthMessages();
+        pullConsumerClient.consumeHealthMessages();
         while (true) {
         }
     }
 
     @Test
     void checkPendingList() {
-        pullConsumer.checkPendingList();
+        pullConsumerClient.checkPendingList();
         while (true) {
         }
     }
-
 
 
 }

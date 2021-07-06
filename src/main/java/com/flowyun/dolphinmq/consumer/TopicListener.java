@@ -15,5 +15,4 @@ public abstract class TopicListener<T> {
      * @param dto 消息信息
      **/
     public abstract void consume(T dto);
-    protected Topic<T> topic;
 }

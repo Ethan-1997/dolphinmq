@@ -13,7 +13,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.BlockingDeque;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -25,16 +24,13 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Data
-public class PullConsumer<T> {
+public class PullConsumerClient {
     private RedissonClient client;
-    private RStream<Object, Object> stream;
     private RStream<Object, Object> deadStream;
     private String consumerGroup;
     private String consumer;
-    private String topicName;
-    RMap<Object, Object> checkDuplicateMap;
-    private Class dtoClass;
-    private Topic<T> topic;
+
+    Set<SubscriptionData<?>> subscriptions;
 
     /**
      * 每次拉取数据的量
@@ -56,8 +52,26 @@ public class PullConsumer<T> {
      * 认领门槛
      */
     private Integer claimThreshold;
+    /**
+     * 是否从头开始订阅消息
+     */
+    private boolean isStartFromHead = true;
 
     private static String DEAD_STREAM_NAME = "DeadStream";
+
+    /**
+     * 订阅主题
+     *
+     * @param topic 主题名
+     * @return 返回SubscriptionData
+     * @author Barry
+     * @since 2021/7/6 9:56
+     */
+    public <T> SubscriptionData<T> subscribe(String topic, Class dtoClazz) {
+        SubscriptionData<T> subscriptionData = new SubscriptionData<>(topic, client, dtoClazz);
+        subscriptions.add(subscriptionData);
+        return subscriptionData;
+    }
 
     /**
      * 初始化消费者，默认消费者格式为：PC-201309011313/122.206.73.83
@@ -65,7 +79,7 @@ public class PullConsumer<T> {
      * @author Barry
      * @since 2021/6/28 16:23
      **/
-    public PullConsumer(RedissonClient client, String topicName, String consumerGroup, Class dtoClass) {
+    public PullConsumerClient(RedissonClient client, String consumerGroup) {
         this.client = client;
         this.consumerGroup = consumerGroup;
         try {
@@ -74,21 +88,15 @@ public class PullConsumer<T> {
             e.printStackTrace();
         }
 
-        this.topicName = topicName;
-        this.dtoClass = dtoClass;
         this.fetchMessageSize = 5;
         this.pendingListIdleThreshold = 60;
         this.checkPendingListSize = 1000;
         this.deadLetterThreshold = 17;
         this.claimThreshold = 10;
-        initStream();
-        createConsumerGroup(true);
-        topic = new Topic<>();
+        this.subscriptions = new HashSet<>();
+        createConsumerGroup(this.isStartFromHead);
     }
 
-    private void initStream() {
-        stream = client.getStream(topicName);
-    }
 
     /**
      * 检查PendingList(进行消费偶尔失败、消费一直失败、死信情况处理)
@@ -98,33 +106,40 @@ public class PullConsumer<T> {
      * @since 2021/6/28 17:11
      **/
     public void checkPendingList() {
-        RFuture<List<PendingEntry>> future = stream.listPendingAsync(
-                consumerGroup,
-                consumer,
-                StreamMessageId.MIN,
-                StreamMessageId.MAX,
-                pendingListIdleThreshold,
-                TimeUnit.SECONDS,
-                checkPendingListSize);
-        future.thenAccept(pendingEntryList -> {
+        for (SubscriptionData<?>
+                subscriptionData :
+                subscriptions) {
+            RStream<Object, Object> stream = subscriptionData.getStream();
+            RFuture<List<PendingEntry>> future = stream.listPendingAsync(
+                    consumerGroup,
+                    consumer,
+                    StreamMessageId.MIN,
+                    StreamMessageId.MAX,
+                    pendingListIdleThreshold,
+                    TimeUnit.SECONDS,
+                    checkPendingListSize);
+            future.thenAccept(pendingEntryList -> {
 
-            Set<StreamMessageId> deadLetterIds = new HashSet<>();
-            Set<StreamMessageId> idleIds = new HashSet<>();
-            for (PendingEntry entry :
-                    pendingEntryList) {
-                long cnt = entry.getLastTimeDelivered();
-                if (cnt >= this.deadLetterThreshold) {
-                    deadLetterIds.add(entry.getId());
-                } else {
-                    idleIds.add(entry.getId());
+                Set<StreamMessageId> deadLetterIds = new HashSet<>();
+                Set<StreamMessageId> idleIds = new HashSet<>();
+                for (PendingEntry entry :
+                        pendingEntryList) {
+                    long cnt = entry.getLastTimeDelivered();
+                    if (cnt >= this.deadLetterThreshold) {
+                        deadLetterIds.add(entry.getId());
+                    } else {
+                        idleIds.add(entry.getId());
+                    }
                 }
-            }
-            consumeIdleMessages(idleIds);
-            consumeDeadLetterMessages(deadLetterIds);
-            ClaimIdleConsumer();
-        }).exceptionally(exception -> {
-            return null;
-        });
+                consumeIdleMessages(idleIds, subscriptionData);
+                consumeDeadLetterMessages(deadLetterIds, stream);
+                claimIdleConsumer(stream);
+            }).exceptionally(exception -> {
+                exception.printStackTrace();
+                return null;
+            });
+        }
+
     }
 
     /**
@@ -133,7 +148,7 @@ public class PullConsumer<T> {
      * @author Barry
      * @since 2021/7/5 16:44
      **/
-    public void ClaimIdleConsumer() {
+    public void claimIdleConsumer(RStream<Object, Object> stream) {
         RFuture<PendingResult> infoAsync = stream.getPendingInfoAsync(consumerGroup);
         infoAsync.thenAccept(res -> {
             Map<String, Long> consumerNames = res.getConsumerNames();
@@ -154,7 +169,7 @@ public class PullConsumer<T> {
                         .filter(entry -> entry.getLastTimeDelivered() >= this.deadLetterThreshold)
                         .collect(Collectors.toList());
                 String randConsumerName = getRandConsumerName(consumerNames);
-                claim(pendingEntries, randConsumerName);
+                claim(pendingEntries, randConsumerName, stream);
             }).exceptionally(exception -> {
                 log.info("listPendingAsync Error:{}", exception.getMessage());
                 return null;
@@ -166,7 +181,7 @@ public class PullConsumer<T> {
         });
     }
 
-    private void claim(List<PendingEntry> pendingEntries, String randConsumerName) {
+    private void claim(List<PendingEntry> pendingEntries, String randConsumerName, RStream<Object, Object> stream) {
         for (PendingEntry entry :
                 pendingEntries) {
             StreamMessageId id = entry.getId();
@@ -191,13 +206,17 @@ public class PullConsumer<T> {
      * @since 2021/6/28 17:08
      **/
     public void consumeHealthMessages() {
-        RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
-                stream.readGroupAsync(consumerGroup, consumer, fetchMessageSize, StreamMessageId.NEVER_DELIVERED);
-        future.thenAccept(this::consumeMessages).exceptionally(exception -> {
-            log.info("consumeHealthMessages Exception:{}", exception.getMessage());
-            exception.printStackTrace();
-            return null;
-        });
+        for (SubscriptionData<?> subscriptionData :
+                this.subscriptions) {
+            RStream<Object, Object> stream = subscriptionData.getStream();
+            RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
+                    stream.readGroupAsync(consumerGroup, consumer, fetchMessageSize, StreamMessageId.NEVER_DELIVERED);
+            future.thenAccept(res -> consumeMessages(res, subscriptionData)).exceptionally(exception -> {
+                log.info("consumeHealthMessages Exception:{}", exception.getMessage());
+                exception.printStackTrace();
+                return null;
+            });
+        }
     }
 
     /**
@@ -207,18 +226,18 @@ public class PullConsumer<T> {
      * @author Barry
      * @since 2021/6/28 18:36
      **/
-    private void consumeIdleMessages(Set<StreamMessageId> idleIds) {
+    private void consumeIdleMessages(Set<StreamMessageId> idleIds, SubscriptionData<?> data) {
         if (idleIds == null || idleIds.size() == 0) {
             return;
         }
-
+        RStream<Object, Object> stream = data.getStream();
         RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
                 stream.readGroupAsync(consumerGroup, consumer, StreamMessageId.ALL);
         future.thenAccept(res -> {
             Map<StreamMessageId, Map<Object, Object>> messages = res.entrySet().stream().
                     filter(row -> idleIds.contains(row.getKey())).
                     collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            consumeMessages(messages);
+            consumeMessages(messages, data);
         }).exceptionally(exception -> {
             log.info(exception.getMessage());
             return null;
@@ -229,11 +248,11 @@ public class PullConsumer<T> {
      * 检查消费一直消费失败的信息（达到最大重试次数后会加入死信队列、通知管理员）
      * //todo ack 并发优化
      *
-     * @param deadLetterIds
+     * @param deadLetterIds 死信ID列表
      * @author Barry
      * @since 2021/6/29 11:06
      */
-    private void consumeDeadLetterMessages(Set<StreamMessageId> deadLetterIds) {
+    private void consumeDeadLetterMessages(Set<StreamMessageId> deadLetterIds, RStream<Object, Object> stream) {
         if (deadLetterIds == null || deadLetterIds.size() == 0) {
             return;
         }
@@ -249,10 +268,12 @@ public class PullConsumer<T> {
                         stream.removeAsync(id);
                         stream.ackAsync(consumerGroup, id);
                     }).exceptionally(exception -> {
+                        exception.printStackTrace();
                         return null;
                     });
                 }
             }).exceptionally(exception -> {
+                exception.printStackTrace();
                 return null;
             });
         }
@@ -267,60 +288,57 @@ public class PullConsumer<T> {
      * @author Barry
      * @since 2021/7/2 11:39
      **/
-    private void consumeMessages(Map<StreamMessageId, Map<Object, Object>> res) {
-        List<StreamMessageId> ackList = new ArrayList<>();
+    private void consumeMessages(Map<StreamMessageId, Map<Object, Object>> res, SubscriptionData<?> data) {
         for (Map.Entry<StreamMessageId, Map<Object, Object>> entry :
                 res.entrySet()) {
-            consumeMessage(entry.getKey(), entry.getValue());
-            ackList.add(entry.getKey());
+            consumeMessage(entry.getKey(), entry.getValue(), (SubscriptionData<Object>) data);
         }
-        batchAck(ackList.toArray(new StreamMessageId[0]));
     }
 
     /**
      * 消费单条数据
      * 判重(一般消费者需要根据业务ID做判重表，消息过的就不再消费消费等幂性存在Redis中进行查重)
      * 分布式锁 保证查看、消费、删除的原子性
+     * todo 优化：只需要对不幂等的操作加锁，不用全部加
+     * todo 问题：幂等性实现有问题。只能一对一 幂等性实现分析
      *
      * @param id     消息ID
      * @param dtoMap Map格式数据
      * @author Barry
      * @since 2021/6/28 17:09
      **/
-    private void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap) {
-        RLock lock = client.getLock(id.toString());
+    private void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, SubscriptionData<Object> subscriptionData) {
+//        RLock lock = client.getLock(id.toString());
+//        try {
+//            RFuture<Boolean> tryAsync = lock.tryLockAsync(100, 10, TimeUnit.SECONDS);
+//            tryAsync.thenAccept(tmp -> {
+//                RBucket<String> bucket = client.getBucket(id.toString());
+//                if (StringUtil.isNullOrEmpty(bucket.get())) {
+//                    try {
+//                        subscriptionData.setDto(BeanMapUtils.toBean(subscriptionData.getDto().getClass(), dtoMap));
+//                        stream.ackAsync(consumerGroup, id);
+//                        bucket.delete();
+//                    } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
+//                        e.printStackTrace();
+//                    }
+//                }
+//            }).exceptionally(ex -> {
+//                ex.printStackTrace();
+//                return null;
+//            });
+//
+//        } finally {
+//            lock.unlockAsync();
+//        }
+        RStream<Object, Object> stream = subscriptionData.getStream();
         try {
-            RFuture<Boolean> tryAsync = lock.tryLockAsync(100, 10, TimeUnit.SECONDS);
-            tryAsync.thenAccept(tmp -> {
-                RBucket<String> bucket = client.getBucket(id.toString());
-                if (StringUtil.isNullOrEmpty(bucket.get())) {
-                    try {
-                        topic.setDto((T) BeanMapUtils.toBean(dtoClass, dtoMap));
-                        bucket.delete();
-                    } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }).exceptionally(ex -> {
-                return null;
-            });
-
-        } finally {
-            lock.unlockAsync();
+            subscriptionData.setDto(BeanMapUtils.toBean(subscriptionData.getDtoClazz(), dtoMap));
+            stream.ackAsync(consumerGroup, id);
+        } catch (IntrospectionException | IllegalAccessException | InstantiationException | InvocationTargetException | NoSuchMethodException e) {
+            e.printStackTrace();
         }
-
     }
 
-    /**
-     * 批量ack
-     *
-     * @param ids id列表
-     * @author Barry
-     * @since 2021/6/28 17:06
-     **/
-    private void batchAck(StreamMessageId... ids) {
-        stream.ackAsync(consumerGroup, ids);
-    }
 
     /**
      * 创建消费者组
@@ -330,14 +348,18 @@ public class PullConsumer<T> {
      * @since 2021/7/1 14:36
      **/
     private void createConsumerGroup(boolean startFromHead) {
-        StreamMessageId id = StreamMessageId.NEWEST;
-        if (startFromHead) {
-            id = StreamMessageId.ALL;
-        }
-        try {
-            stream.createGroupAsync(consumerGroup, id);
-        } catch (RedisBusyException e) {
-            log.info(e.getMessage());
+        for (SubscriptionData<?> data :
+                subscriptions) {
+            RStream<Object, Object> stream = data.getStream();
+            StreamMessageId id = StreamMessageId.NEWEST;
+            if (startFromHead) {
+                id = StreamMessageId.ALL;
+            }
+            try {
+                stream.createGroupAsync(consumerGroup, id);
+            } catch (RedisBusyException e) {
+                log.info(e.getMessage());
+            }
         }
     }
 

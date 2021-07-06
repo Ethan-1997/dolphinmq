@@ -38,31 +38,21 @@ public class Producer {
      * @since 2021/6/28 15:38
      **/
     public void sendMessageAsync(Message msg) {
-        RBucket<Object> bucket = client.getBucket(msg.getId().toString());
-        bucket.expire(15, TimeUnit.MINUTES);
-        RFuture<Void> setAsync = bucket.setAsync(msg.getId().toString());
-        setAsync.thenAccept(tmp -> {
-            stream = client.getStream(msg.getTopic());
-            RFuture<Void> sendMessageFuture =
-                    stream.addAsync(
-                            msg.getId(),
-                            StreamAddArgs.entries(BeanMapUtils.getObjectObjectMap(msg.getProperties())).trim(TrimStrategy.MAXLEN, trimThreashold));
-            sendMessageFuture.thenAccept(res -> {
-                log.debug("stream : {} add message:{} success",
-                        msg.getTopic(),
-                        msg.getProperties());
-            }).exceptionally(exception -> {
-                log.debug("stream : {} add message:{} error, exception:{}",
-                        msg.getTopic(),
-                        msg.getProperties(),
-                        exception.getMessage());
-                return null;
-            });
-        }).exceptionally(ex -> {
-            log.debug("create flag false:{}",
-                    ex.getMessage());
+        stream = client.getStream(msg.getTopic());
+        RFuture<Void> sendMessageFuture =
+                stream.addAsync(
+                        msg.getId(),
+                        StreamAddArgs.entries(BeanMapUtils.getObjectObjectMap(msg.getProperties())).trim(TrimStrategy.MAXLEN, trimThreashold));
+        sendMessageFuture.thenAccept(res -> {
+            log.debug("stream : {} add message:{} success",
+                    msg.getTopic(),
+                    msg.getProperties());
+        }).exceptionally(exception -> {
+            log.debug("stream : {} add message:{} error, exception:{}",
+                    msg.getTopic(),
+                    msg.getProperties(),
+                    exception.getMessage());
             return null;
         });
-
     }
 }
