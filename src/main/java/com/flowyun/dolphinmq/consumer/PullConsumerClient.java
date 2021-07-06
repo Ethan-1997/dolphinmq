@@ -1,5 +1,7 @@
 package com.flowyun.dolphinmq.consumer;
 
+import com.flowyun.dolphinmq.executor.CheckPendingListScheduledExecutor;
+import com.flowyun.dolphinmq.executor.PullHealthyMessagesScheduledExecutor;
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
 import io.netty.util.internal.StringUtil;
 import lombok.Data;
@@ -13,7 +15,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
@@ -300,7 +302,6 @@ public class PullConsumerClient {
      * 判重(一般消费者需要根据业务ID做判重表，消息过的就不再消费消费等幂性存在Redis中进行查重)
      * 分布式锁 保证查看、消费、删除的原子性
      * todo 优化：只需要对不幂等的操作加锁，不用全部加
-     * todo 问题：幂等性实现有问题。只能一对一 幂等性实现分析
      *
      * @param id     消息ID
      * @param dtoMap Map格式数据
@@ -364,6 +365,21 @@ public class PullConsumerClient {
                 log.info(e.getMessage());
             }
         }
+    }
+
+    public void start() {
+        ScheduledExecutorService service = Executors.newScheduledThreadPool(16);
+        service.scheduleAtFixedRate(
+                new PullHealthyMessagesScheduledExecutor(this),
+                1,
+                1,
+                TimeUnit.SECONDS);
+        service.scheduleAtFixedRate(
+                new CheckPendingListScheduledExecutor(this),
+                1,
+                1,
+                TimeUnit.SECONDS);
+
     }
 
 }

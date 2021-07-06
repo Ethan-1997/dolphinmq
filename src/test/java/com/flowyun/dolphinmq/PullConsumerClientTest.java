@@ -50,6 +50,8 @@ public class PullConsumerClientTest {
         Hi2Listener hi2Listener = new Hi2Listener();
         t1.registerMessageListener(hiListener);
         t1.registerMessageListener(hi2Listener);
+
+
 //        topic.attach();
     }
 
@@ -89,6 +91,8 @@ public class PullConsumerClientTest {
         }
 
     }
+
+
 
 
 }
