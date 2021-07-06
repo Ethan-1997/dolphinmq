@@ -4,8 +4,8 @@ package com.flowyun.dolphinmq.exception;
  * @author Barry
  */
 public class CodeMsg {
-    private int code;
-    private String msg;
+    private final int code;
+    private final String msg;
 
 
     /**

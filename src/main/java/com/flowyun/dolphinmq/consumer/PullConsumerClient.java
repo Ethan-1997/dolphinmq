@@ -102,7 +102,6 @@ public class PullConsumerClient {
 
     /**
      * 检查PendingList(进行消费偶尔失败、消费一直失败、死信情况处理)
-     * todo 开一个线程专门负责
      *
      * @author Barry
      * @since 2021/6/28 17:11
@@ -248,7 +247,6 @@ public class PullConsumerClient {
 
     /**
      * 检查消费一直消费失败的信息（达到最大重试次数后会加入死信队列、通知管理员）
-     * //todo ack 并发优化
      *
      * @param deadLetterIds 死信ID列表
      * @author Barry

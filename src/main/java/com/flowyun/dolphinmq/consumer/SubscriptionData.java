@@ -1,6 +1,5 @@
 package com.flowyun.dolphinmq.consumer;
 
-import com.sun.jdi.ClassType;
 import lombok.Data;
 import org.redisson.api.RStream;
 import org.redisson.api.RedissonClient;
