@@ -1,8 +1,8 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumerClient;
-import com.flowyun.dolphinmq.consumer.SubscriptionData;
-import com.flowyun.dolphinmq.consumer.TopicListener;
+import com.flowyun.dolphinmq.consumer.Subscriber;
+import com.flowyun.dolphinmq.consumer.MsgListener;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.redisson.Redisson;
@@ -31,12 +31,12 @@ public class FinalTest {
                 redisson,
                 "service"
         );
-        SubscriptionData<Testbean> t1 = pullConsumerClient.subscribe("t1", Testbean.class);
+        Subscriber<Testbean> t1 = pullConsumerClient.subscribe("t1");
 
         HiListener hiListener = new HiListener();
 
-        t1.registerMessageListener(hiListener);
-        t1.registerMessageListener(new TopicListener<Testbean>() {
+        t1.registerListener(hiListener);
+        t1.registerListener(new MsgListener<Testbean>() {
             @Override
             public void consume(Testbean dto) {
                 log.info("dto:{}", dto);

@@ -1,6 +1,6 @@
 package com.flowyun.dolphinmq;
 
-import com.flowyun.dolphinmq.consumer.TopicListener;
+import com.flowyun.dolphinmq.consumer.MsgListener;
 import lombok.extern.slf4j.Slf4j;
 
 /**
@@ -10,7 +10,7 @@ import lombok.extern.slf4j.Slf4j;
  * @since 2021/7/5 10:07
  */
 @Slf4j
-public class Hi2Listener extends TopicListener<Testbean> {
+public class Hi2Listener extends MsgListener<Testbean> {
 
     @Override
     public void consume(Testbean dto) {

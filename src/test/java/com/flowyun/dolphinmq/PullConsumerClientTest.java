@@ -1,10 +1,8 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumerClient;
-import com.flowyun.dolphinmq.consumer.SubscriptionData;
-import com.flowyun.dolphinmq.consumer.TopicListener;
+import com.flowyun.dolphinmq.consumer.Subscriber;
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
-import jodd.util.collection.MapEntry;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
@@ -17,8 +15,6 @@ import org.slf4j.LoggerFactory;
 
 import java.beans.IntrospectionException;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -44,12 +40,12 @@ public class PullConsumerClientTest {
                 redisson,
                 "service"
         );
-        SubscriptionData<Testbean> t1 = pullConsumerClient.subscribe("t1", Testbean.class);
+        Subscriber<Testbean> t1 = pullConsumerClient.subscribe("t1");
 
         HiListener hiListener = new HiListener();
         Hi2Listener hi2Listener = new Hi2Listener();
-        t1.registerMessageListener(hiListener);
-        t1.registerMessageListener(hi2Listener);
+        t1.registerListener(hiListener);
+        t1.registerListener(hi2Listener);
 
 
 //        topic.attach();
@@ -79,7 +75,7 @@ public class PullConsumerClientTest {
             pullConsumerClient.consumeMessage(
                     new StreamMessageId(336715923374l, 2l),
                     hhhh,
-                    new SubscriptionData<Object>("t1", redisson, Testbean.class));
+                    new Subscriber<Object>("t1", redisson));
         } catch (IntrospectionException e) {
             e.printStackTrace();
         } catch (IllegalAccessException e) {

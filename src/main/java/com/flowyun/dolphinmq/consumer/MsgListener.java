@@ -7,7 +7,7 @@ package com.flowyun.dolphinmq.consumer;
  * @author Barry
  * @since 2021/6/30 14:55
  */
-public abstract class TopicListener<T> {
+public abstract class MsgListener<T> {
     /**
      * 消费方法
      * @author  Barry

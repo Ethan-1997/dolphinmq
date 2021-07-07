@@ -32,7 +32,7 @@ public class PullConsumerClient {
     private String consumerGroup;
     private String consumer;
 
-    Set<SubscriptionData<?>> subscriptions;
+    Set<Subscriber<?>> subscriptions;
 
     /**
      * 每次拉取数据的量
@@ -69,10 +69,10 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/7/6 9:56
      */
-    public <T> SubscriptionData<T> subscribe(String topic, Class dtoClazz) {
-        SubscriptionData<T> subscriptionData = new SubscriptionData<>(topic, client, dtoClazz);
-        subscriptions.add(subscriptionData);
-        return subscriptionData;
+    public <T> Subscriber<T> subscribe(String topic) {
+        Subscriber<T> subscriber = new Subscriber<>(topic, client);
+        subscriptions.add(subscriber);
+        return subscriber;
     }
 
     /**
@@ -107,10 +107,10 @@ public class PullConsumerClient {
      * @since 2021/6/28 17:11
      **/
     public void checkPendingList() {
-        for (SubscriptionData<?>
-                subscriptionData :
+        for (Subscriber<?>
+                subscriber :
                 subscriptions) {
-            RStream<Object, Object> stream = subscriptionData.getStream();
+            RStream<Object, Object> stream = subscriber.getStream();
             RFuture<List<PendingEntry>> future = stream.listPendingAsync(
                     consumerGroup,
                     consumer,
@@ -132,7 +132,7 @@ public class PullConsumerClient {
                         idleIds.add(entry.getId());
                     }
                 }
-                consumeIdleMessages(idleIds, subscriptionData);
+                consumeIdleMessages(idleIds, subscriber);
                 consumeDeadLetterMessages(deadLetterIds, stream);
                 claimIdleConsumer(stream);
             }).exceptionally(exception -> {
@@ -207,12 +207,12 @@ public class PullConsumerClient {
      * @since 2021/6/28 17:08
      **/
     public void consumeHealthMessages() {
-        for (SubscriptionData<?> subscriptionData :
+        for (Subscriber<?> subscriber :
                 this.subscriptions) {
-            RStream<Object, Object> stream = subscriptionData.getStream();
+            RStream<Object, Object> stream = subscriber.getStream();
             RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
                     stream.readGroupAsync(consumerGroup, consumer, fetchMessageSize, StreamMessageId.NEVER_DELIVERED);
-            future.thenAccept(res -> consumeMessages(res, subscriptionData)).exceptionally(exception -> {
+            future.thenAccept(res -> consumeMessages(res, subscriber)).exceptionally(exception -> {
                 log.info("consumeHealthMessages Exception:{}", exception.getMessage());
                 exception.printStackTrace();
                 return null;
@@ -227,7 +227,7 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/6/28 18:36
      **/
-    private void consumeIdleMessages(Set<StreamMessageId> idleIds, SubscriptionData<?> data) {
+    private void consumeIdleMessages(Set<StreamMessageId> idleIds, Subscriber<?> data) {
         if (idleIds == null || idleIds.size() == 0) {
             return;
         }
@@ -288,10 +288,10 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/7/2 11:39
      **/
-    private void consumeMessages(Map<StreamMessageId, Map<Object, Object>> res, SubscriptionData<?> data) {
+    private void consumeMessages(Map<StreamMessageId, Map<Object, Object>> res, Subscriber<?> data) {
         for (Map.Entry<StreamMessageId, Map<Object, Object>> entry :
                 res.entrySet()) {
-            consumeMessage(entry.getKey(), entry.getValue(), (SubscriptionData<Object>) data);
+            consumeMessage(entry.getKey(), entry.getValue(), (Subscriber<Object>) data);
         }
     }
 
@@ -306,8 +306,8 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/6/28 17:09
      **/
-    public void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, SubscriptionData<Object> subscriptionData) {
-        RStream<Object, Object> stream = subscriptionData.getStream();
+    public void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, Subscriber<Object> subscriber) {
+        RStream<Object, Object> stream = subscriber.getStream();
         String lockName = consumerGroup + id.toString();
         RLock lock = client.getLock(lockName);
         try {
@@ -318,7 +318,7 @@ public class PullConsumerClient {
                 bucketAsync.thenAccept(bucketRes -> {
                     if (StringUtil.isNullOrEmpty(bucketRes)) {
                         try {
-                            subscriptionData.setDto(BeanMapUtils.toBean(subscriptionData.getDtoClazz(), dtoMap));
+                            subscriber.notify(BeanMapUtils.toBean(subscriber.getMsgClass(), dtoMap));
                             stream.ackAsync(consumerGroup, id);
                             bucket.setAsync("consumed");
                             bucket.expireAsync(30, TimeUnit.MINUTES);
@@ -350,7 +350,7 @@ public class PullConsumerClient {
      * @since 2021/7/1 14:36
      **/
     private void createConsumerGroup(boolean startFromHead) {
-        for (SubscriptionData<?> data :
+        for (Subscriber<?> data :
                 subscriptions) {
             RStream<Object, Object> stream = data.getStream();
             StreamMessageId id = StreamMessageId.NEWEST;
