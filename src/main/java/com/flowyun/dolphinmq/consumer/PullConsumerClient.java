@@ -374,7 +374,7 @@ public class PullConsumerClient {
             e.printStackTrace();
         }
 
-        pullConsumerClient.subscriptions = new CopyOnWriteArraySet<>();
+        pullConsumerClient.subscriptions = new HashSet<>();
         return pullConsumerClient;
     }
 

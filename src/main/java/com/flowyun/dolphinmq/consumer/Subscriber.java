@@ -1,6 +1,8 @@
 package com.flowyun.dolphinmq.consumer;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.redisson.api.RStream;
 import org.redisson.api.RedissonClient;
 
@@ -16,7 +18,8 @@ import java.util.List;
  * @author Barry
  * @since 2021/7/6 9:34
  */
-@Data
+@Getter
+@Setter
 public class Subscriber<T> {
     private RStream<Object, Object> stream;
     private String topicName;
