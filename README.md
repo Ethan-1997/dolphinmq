@@ -13,28 +13,64 @@
 ## 🖥 Environment Required
 - redis v5.0.0+
 ## ☀️ Quick Start
+### Producer
 ```java 
 Config config = new Config();
 config.useSingleServer().setAddress("redis://127.0.0.1:6379");
 RedissonClient redisson = Redisson.create(config);
 
-PullConsumerClient pullConsumerClient = new PullConsumerClient(
-        redisson,
-        "consumerGroupName"
-);
-SubscriptionData<Testbean> t1 = pullConsumerClient.subscribe("topicName", Testbean.class);
+Producer producer = new Producer(redisson);
+Message msg = new Message();
+Testbean test = new Testbean("test", 13);
+msg.setTopic("t1");
+try {
+    msg.setProperties(BeanMapUtils.toMap(test));
+} catch (IntrospectionException | IllegalAccessException | InvocationTargetException e) {
+    e.printStackTrace();
+}
+producer.sendMessageAsync(msg);
+```
+### Consumer
+```java 
+Config config = new Config();
+config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+redisson = Redisson.create(config);
 
-HiListener hiListener = new HiListener();
+HiListener<Testbean> hiListener = new HiListener<>();
 
-t1.registerMessageListener(hiListener);
-t1.registerMessageListener(new TopicListener<Testbean>() {
-    @Override
-    public void consume(Testbean dto) {
-        log.info("dto:{}", dto);
-    }
-});
-
-pullConsumerClient.start();
+PullConsumerClient.builde()
+        .setRedissonClient(redisson)
+        .setService("service")
+        .<Testbean>subscribe("t1")
+        .registerListener(hiListener)
+        .registerListener(hiListener)
+        .<Testbean>subscribe("t2")
+        .registerListener(hiListener)
+        .start();
+```
+## 🎈 Configuration
+### 配置文件
+```
+dolphinmq-config.yml
+```
+### 配置项
+```
+# 每次拉取数据的量
+fetchMessageSize: 5
+#检查consumer不活跃的门槛（单位秒）
+pendingListIdleThreshold: 10
+#每次拉取PendingList的大小
+checkPendingListSize: 1000
+#死信门槛（计次器次数）
+deadLetterThreshold: 32
+#认领门槛(单位毫秒)
+claimThreshold: 3600
+#是否从头开始订阅消息
+isStartFromHead: "true"
+#拉取信息的周期(单位秒)
+pullHealthyMessagesPeriod: 1
+#检查PendingList周期(单位秒)
+checkPendingListsPeriod: 10
 ```
 
 

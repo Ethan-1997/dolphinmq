@@ -19,21 +19,17 @@ import java.lang.reflect.InvocationTargetException;
  */
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ProducerTest {
-    public RedissonClient redisson;
 
-    @BeforeAll
-    void config() {
-        // 1. Create config object
-        Config config = new Config();
-        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
-        redisson = Redisson.create(config);
-    }
 
     @Test
     void produce() throws InterruptedException {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        RedissonClient redisson = Redisson.create(config);
+
         Producer producer = new Producer(redisson);
         Message msg = new Message();
-        Testbean test = new Testbean("wwww", 13);
+        Testbean test = new Testbean("test", 13);
         msg.setTopic("t1");
         try {
             msg.setProperties(BeanMapUtils.toMap(test));
