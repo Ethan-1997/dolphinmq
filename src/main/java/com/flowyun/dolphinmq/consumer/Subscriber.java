@@ -21,10 +21,14 @@ public class Subscriber<T> {
     private RStream<Object, Object> stream;
     private String topicName;
     private final List<MsgListener<T>> listeners = new ArrayList<>();
+    private PullConsumerClient pullConsumerClient;
+    private RedissonClient redissonClient;
 
-    public Subscriber(String topic, RedissonClient client) {
+    public Subscriber(String topic, RedissonClient redissonClient, PullConsumerClient pullConsumerClient) {
         this.topicName = topic;
-        initStream(client);
+        initStream(redissonClient);
+        this.redissonClient = redissonClient;
+        this.pullConsumerClient = pullConsumerClient;
     }
 
     private Class<?> getSuperClassGenericType(final Class<?> clazz, final int index) {
@@ -52,14 +56,31 @@ public class Subscriber<T> {
         }
     }
 
-    public void registerListener(MsgListener<T> listener) {
+    public Subscriber<T> registerListener(MsgListener<T> listener) {
         listeners.add(listener);
+        return this;
     }
 
     public void notify(T dto) {
         for (MsgListener<T> listener : listeners) {
             listener.consume(dto);
         }
+    }
+
+    /**
+     * 订阅主题
+     *
+     * @param topic 主题名
+     * @return 返回SubscriptionData
+     * @author Barry
+     * @since 2021/7/6 9:56
+     */
+    public <T> Subscriber<T> subscribe(String topic) {
+        return pullConsumerClient.subscribe(topic);
+    }
+
+    public void start() {
+        pullConsumerClient.start();
     }
 
 }

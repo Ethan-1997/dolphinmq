@@ -1,8 +1,6 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumerClient;
-import com.flowyun.dolphinmq.consumer.Subscriber;
-import com.flowyun.dolphinmq.consumer.MsgListener;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 import org.redisson.Redisson;
@@ -19,7 +17,6 @@ import org.redisson.config.Config;
 @Slf4j
 public class FinalTest {
     private RedissonClient redisson;
-    PullConsumerClient pullConsumerClient;
 
     @Test
     void test() {
@@ -27,24 +24,18 @@ public class FinalTest {
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
         redisson = Redisson.create(config);
 
-        pullConsumerClient = new PullConsumerClient(
-                redisson,
-                "service"
-        );
-        Subscriber<Testbean> t1 = pullConsumerClient.subscribe("t1");
+        HiListener<Testbean> hiListener = new HiListener<>();
 
-        HiListener hiListener = new HiListener();
-
-        t1.registerListener(hiListener);
-        t1.registerListener(new MsgListener<Testbean>() {
-            @Override
-            public void consume(Testbean dto) {
-                log.info("dto:{}", dto);
-            }
-        });
-
-        pullConsumerClient.start();
-        while (true){
+        PullConsumerClient.builde()
+                .setRedissonClient(redisson)
+                .setService("service")
+                .<Testbean>subscribe("t1")
+                .registerListener(hiListener)
+                .registerListener(hiListener)
+                .<Testbean>subscribe("t2")
+                .registerListener(hiListener)
+                .start();
+        while (true) {
 
         }
     }

@@ -10,11 +10,10 @@ import lombok.extern.slf4j.Slf4j;
  * @since 2021/7/5 10:07
  */
 @Slf4j
-public class HiListener extends MsgListener<Testbean> {
-
+public class HiListener<T> extends MsgListener<T> {
 
     @Override
-    public void consume(Testbean dto) {
+    public void consume(T dto) {
         log.info("hi1 :dto:{}", dto);
     }
 }

@@ -1,5 +1,6 @@
 package com.flowyun.dolphinmq.consumer;
 
+import com.flowyun.dolphinmq.common.DolphinMQConfig;
 import com.flowyun.dolphinmq.executor.CheckPendingListScheduledExecutor;
 import com.flowyun.dolphinmq.executor.PullHealthyMessagesScheduledExecutor;
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
@@ -9,6 +10,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.*;
 import org.redisson.api.stream.StreamAddArgs;
 import org.redisson.client.RedisBusyException;
+import org.yaml.snakeyaml.Yaml;
 
 import java.beans.IntrospectionException;
 import java.lang.reflect.InvocationTargetException;
@@ -31,33 +33,8 @@ public class PullConsumerClient {
     private RStream<Object, Object> deadStream;
     private String consumerGroup;
     private String consumer;
-
+    private DolphinMQConfig config;
     Set<Subscriber<?>> subscriptions;
-
-    /**
-     * 每次拉取数据的量
-     */
-    private Integer fetchMessageSize;
-    /**
-     * 检查consumer不活跃的门槛（单位秒）
-     */
-    private Integer pendingListIdleThreshold;
-    /**
-     * 每次拉取PendingList的大小
-     */
-    private Integer checkPendingListSize;
-    /**
-     * 死信门槛
-     */
-    private Integer deadLetterThreshold;
-    /**
-     * 认领门槛
-     */
-    private Integer claimThreshold;
-    /**
-     * 是否从头开始订阅消息
-     */
-    private boolean isStartFromHead = true;
 
     private static String DEAD_STREAM_NAME = "DeadStream";
 
@@ -70,7 +47,7 @@ public class PullConsumerClient {
      * @since 2021/7/6 9:56
      */
     public <T> Subscriber<T> subscribe(String topic) {
-        Subscriber<T> subscriber = new Subscriber<>(topic, client);
+        Subscriber<T> subscriber = new Subscriber<>(topic, client, this);
         subscriptions.add(subscriber);
         return subscriber;
     }
@@ -81,22 +58,12 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/6/28 16:23
      **/
-    public PullConsumerClient(RedissonClient client, String consumerGroup) {
+   /* public PullConsumerClient(RedissonClient client, String consumerGroup) {
         this.client = client;
         this.consumerGroup = consumerGroup;
-        try {
-            this.consumer = InetAddress.getLocalHost().toString();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        }
+    }*/
+    private PullConsumerClient() {
 
-        this.fetchMessageSize = 5;
-        this.pendingListIdleThreshold = 60;
-        this.checkPendingListSize = 1000;
-        this.deadLetterThreshold = 17;
-        this.claimThreshold = 10;
-        this.subscriptions = new HashSet<>();
-        createConsumerGroup(this.isStartFromHead);
     }
 
 
@@ -116,9 +83,9 @@ public class PullConsumerClient {
                     consumer,
                     StreamMessageId.MIN,
                     StreamMessageId.MAX,
-                    pendingListIdleThreshold,
+                    config.getPendingListIdleThreshold(),
                     TimeUnit.SECONDS,
-                    checkPendingListSize);
+                    config.getCheckPendingListSize());
             future.thenAccept(pendingEntryList -> {
 
                 Set<StreamMessageId> deadLetterIds = new HashSet<>();
@@ -126,7 +93,7 @@ public class PullConsumerClient {
                 for (PendingEntry entry :
                         pendingEntryList) {
                     long cnt = entry.getLastTimeDelivered();
-                    if (cnt >= this.deadLetterThreshold) {
+                    if (cnt >= this.config.getDeadLetterThreshold()) {
                         deadLetterIds.add(entry.getId());
                     } else {
                         idleIds.add(entry.getId());
@@ -162,12 +129,12 @@ public class PullConsumerClient {
                     consumer,
                     StreamMessageId.MIN,
                     StreamMessageId.MAX,
-                    claimThreshold,
+                    config.getClaimThreshold(),
                     TimeUnit.MILLISECONDS,
-                    checkPendingListSize);
+                    config.getCheckPendingListSize());
             future.thenAccept(pendingEntryList -> {
                 List<PendingEntry> pendingEntries = pendingEntryList.stream()
-                        .filter(entry -> entry.getLastTimeDelivered() >= this.deadLetterThreshold)
+                        .filter(entry -> entry.getLastTimeDelivered() >= config.getDeadLetterThreshold())
                         .collect(Collectors.toList());
                 String randConsumerName = getRandConsumerName(consumerNames);
                 claim(pendingEntries, randConsumerName, stream);
@@ -186,7 +153,7 @@ public class PullConsumerClient {
         for (PendingEntry entry :
                 pendingEntries) {
             StreamMessageId id = entry.getId();
-            stream.claimAsync(consumerGroup, randConsumerName, this.claimThreshold, TimeUnit.MILLISECONDS, id, id);
+            stream.claimAsync(consumerGroup, randConsumerName, config.getClaimThreshold(), TimeUnit.MILLISECONDS, id, id);
         }
     }
 
@@ -211,7 +178,7 @@ public class PullConsumerClient {
                 this.subscriptions) {
             RStream<Object, Object> stream = subscriber.getStream();
             RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
-                    stream.readGroupAsync(consumerGroup, consumer, fetchMessageSize, StreamMessageId.NEVER_DELIVERED);
+                    stream.readGroupAsync(consumerGroup, consumer, config.getFetchMessageSize(), StreamMessageId.NEVER_DELIVERED);
             future.thenAccept(res -> consumeMessages(res, subscriber)).exceptionally(exception -> {
                 log.info("consumeHealthMessages Exception:{}", exception.getMessage());
                 exception.printStackTrace();
@@ -370,14 +337,46 @@ public class PullConsumerClient {
         service.scheduleAtFixedRate(
                 new PullHealthyMessagesScheduledExecutor(this),
                 1,
-                1,
+                config.getPullHealthyMessagesPeriod(),
                 TimeUnit.SECONDS);
         service.scheduleAtFixedRate(
                 new CheckPendingListScheduledExecutor(this),
                 1,
-                1,
+                config.getCheckPendingListsPeriod(),
                 TimeUnit.SECONDS);
 
     }
+
+    public PullConsumerClient setRedissonClient(RedissonClient client) {
+        this.client = client;
+        return this;
+    }
+
+    public PullConsumerClient setService(String service) {
+        this.consumerGroup = service;
+        createConsumerGroup(config.getIsStartFromHead());
+        return this;
+    }
+
+    public static PullConsumerClient builde() {
+        PullConsumerClient pullConsumerClient = new PullConsumerClient();
+
+        //读配置
+        Yaml yaml = new Yaml();
+        DolphinMQConfig config = yaml.loadAs(PullConsumerClient.class.getResourceAsStream("/dolphinmq-config.yml"),
+                DolphinMQConfig.class);
+        pullConsumerClient.setConfig(config);
+
+        //设置consumer
+        try {
+            pullConsumerClient.consumer = InetAddress.getLocalHost().toString();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
+
+        pullConsumerClient.subscriptions = new CopyOnWriteArraySet<>();
+        return pullConsumerClient;
+    }
+
 
 }

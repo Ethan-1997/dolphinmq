@@ -36,7 +36,7 @@ public class PullConsumerClientTest {
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
         redisson = Redisson.create(config);
 
-        pullConsumerClient = new PullConsumerClient(
+       /* pullConsumerClient = new PullConsumerClient(
                 redisson,
                 "service"
         );
@@ -45,7 +45,7 @@ public class PullConsumerClientTest {
         HiListener hiListener = new HiListener();
         Hi2Listener hi2Listener = new Hi2Listener();
         t1.registerListener(hiListener);
-        t1.registerListener(hi2Listener);
+        t1.registerListener(hi2Listener);*/
 
 
 //        topic.attach();
@@ -69,13 +69,13 @@ public class PullConsumerClientTest {
     @Test
     void testIdempotent() {
 
-        try {
+       /* try {
             Map<Object, Object> hhhh = BeanMapUtils.toMap(new Testbean("hhhh", 23)).
                     entrySet().stream().collect(Collectors.toMap(o -> (Object) o, e -> e));
             pullConsumerClient.consumeMessage(
                     new StreamMessageId(336715923374l, 2l),
                     hhhh,
-                    new Subscriber<Object>("t1", redisson));
+                    new Subscriber<Object>("t1", redisson, this));
         } catch (IntrospectionException e) {
             e.printStackTrace();
         } catch (IllegalAccessException e) {
@@ -84,7 +84,7 @@ public class PullConsumerClientTest {
             e.printStackTrace();
         }
         while (true) {
-        }
+        }*/
 
     }
 
