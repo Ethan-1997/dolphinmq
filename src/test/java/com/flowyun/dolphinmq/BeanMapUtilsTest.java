@@ -11,8 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 〈一句话功能简述〉
- * 〈功能详细描述〉
+ * BeanMapUtils 测试
  *
  * @author Barry
  * @since 2021/6/29 17:12

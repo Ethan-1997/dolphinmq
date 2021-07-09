@@ -1,8 +1,5 @@
 package com.flowyun.dolphinmq.consumer;
 
-import lombok.Data;
-import lombok.Getter;
-import lombok.Setter;
 import org.redisson.api.RStream;
 import org.redisson.api.RedissonClient;
 
@@ -12,8 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 〈一句话功能简述〉
- * 〈功能详细描述〉
+ * 订阅者
  *
  * @author Barry
  * @since 2021/7/6 9:34

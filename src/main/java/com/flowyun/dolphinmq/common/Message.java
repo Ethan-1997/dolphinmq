@@ -1,6 +1,8 @@
 package com.flowyun.dolphinmq.common;
 
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import org.redisson.api.StreamMessageId;
 
 import java.io.Serializable;
@@ -12,7 +14,8 @@ import java.util.Map;
  * @author Barry
  * @since 2021/6/28 14:40
  */
-@Data
+@Getter
+@Setter
 public class Message implements Serializable {
     private static final long serialVersionUID = 8445773977080406428L;
 

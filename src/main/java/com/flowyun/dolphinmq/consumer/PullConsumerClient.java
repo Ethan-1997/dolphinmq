@@ -45,6 +45,44 @@ public class PullConsumerClient {
 
     private static String DEAD_STREAM_NAME = "DeadStream";
 
+    /**
+     * @author Barry
+     * @since 2021/6/28 16:23
+     **/
+    private PullConsumerClient() {
+
+    }
+
+    public static class Builder {
+
+
+        public Builder() {
+
+        }
+
+        public Builder setRedissonClient(RedissonClient client) {
+            pullConsumerClient.client = client;
+            return this;
+        }
+
+        public Builder setService(String service) {
+            pullConsumerClient.consumerGroup = service;
+            return this;
+        }
+
+        public PullConsumerClient build() {
+            try {
+                pullConsumerClient.consumer = InetAddress.getLocalHost().toString();
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+            pullConsumerClient.subscriptions = new HashSet<>();
+            pullConsumerClient.createConsumerGroup(pullConsumerClient.config.getIsStartFromHead());
+            return pullConsumerClient;
+        }
+
+    }
+
     @Autowired
     public void setConfig(DolphinMQConfig config) {
         this.config = config;
@@ -67,20 +105,6 @@ public class PullConsumerClient {
         Subscriber<T> subscriber = new Subscriber<>(topic, client, this);
         subscriptions.add(subscriber);
         return subscriber;
-    }
-
-    /**
-     * 初始化消费者，默认消费者格式为：PC-201309011313/122.206.73.83
-     *
-     * @author Barry
-     * @since 2021/6/28 16:23
-     **/
-   /* public PullConsumerClient(RedissonClient client, String consumerGroup) {
-        this.client = client;
-        this.consumerGroup = consumerGroup;
-    }*/
-    private PullConsumerClient() {
-
     }
 
 
@@ -128,12 +152,72 @@ public class PullConsumerClient {
     }
 
     /**
+     * 正常消费fetchMessageSize条数据
+     *
+     * @author Barry
+     * @since 2021/6/28 17:08
+     **/
+    public void consumeHealthMessages() {
+        for (Subscriber<?> subscriber :
+                this.subscriptions) {
+            RStream<Object, Object> stream = subscriber.getStream();
+            RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
+                    stream.readGroupAsync(consumerGroup, consumer, config.getFetchMessageSize(), StreamMessageId.NEVER_DELIVERED);
+            future.thenAccept(res -> consumeMessages(res, subscriber)).exceptionally(exception -> {
+                log.info("consumeHealthMessages Exception:{}", exception.getMessage());
+                exception.printStackTrace();
+                return null;
+            });
+        }
+    }
+
+    public void start() {
+        ScheduledExecutorService service = Executors.newScheduledThreadPool(16);
+        service.scheduleAtFixedRate(
+                new PullHealthyMessagesScheduledExecutor(this),
+                1,
+                config.getPullHealthyMessagesPeriod(),
+                TimeUnit.SECONDS);
+        service.scheduleAtFixedRate(
+                new CheckPendingListScheduledExecutor(this),
+                1,
+                config.getCheckPendingListsPeriod(),
+                TimeUnit.SECONDS);
+
+    }
+
+    /**
+     * 消费空闲超时信息进行重传
+     *
+     * @param idleIds 超时列表
+     * @author Barry
+     * @since 2021/6/28 18:36
+     **/
+    private void consumeIdleMessages(Set<StreamMessageId> idleIds, Subscriber<?> data) {
+        if (idleIds == null || idleIds.size() == 0) {
+            return;
+        }
+        RStream<Object, Object> stream = data.getStream();
+        RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
+                stream.readGroupAsync(consumerGroup, consumer, StreamMessageId.ALL);
+        future.thenAccept(res -> {
+            Map<StreamMessageId, Map<Object, Object>> messages = res.entrySet().stream().
+                    filter(row -> idleIds.contains(row.getKey())).
+                    collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+            consumeMessages(messages, data);
+        }).exceptionally(exception -> {
+            log.info(exception.getMessage());
+            return null;
+        });
+    }
+
+    /**
      * 认领空闲过久的消息
      *
      * @author Barry
      * @since 2021/7/5 16:44
      **/
-    public void claimIdleConsumer(RStream<Object, Object> stream) {
+    private void claimIdleConsumer(RStream<Object, Object> stream) {
         RFuture<PendingResult> infoAsync = stream.getPendingInfoAsync(consumerGroup);
         infoAsync.thenAccept(res -> {
             Map<String, Long> consumerNames = res.getConsumerNames();
@@ -162,69 +246,6 @@ public class PullConsumerClient {
 
         }).exceptionally(ex -> {
             log.info("Claim Error:{}", ex.getMessage());
-            return null;
-        });
-    }
-
-    private void claim(List<PendingEntry> pendingEntries, String randConsumerName, RStream<Object, Object> stream) {
-        for (PendingEntry entry :
-                pendingEntries) {
-            StreamMessageId id = entry.getId();
-            stream.claimAsync(consumerGroup, randConsumerName, config.getClaimThreshold(), TimeUnit.MILLISECONDS, id, id);
-        }
-    }
-
-    private String getRandConsumerName(Map<String, Long> consumerNames) {
-        List<Map.Entry<String, Long>> entries = consumerNames.entrySet().stream()
-                .filter(entry -> entry.getKey().equals(consumer))
-                .collect(Collectors.toList());
-
-        Random rand = new Random();
-        int i = rand.nextInt(entries.size());
-        return entries.get(i).getKey();
-    }
-
-    /**
-     * 正常消费fetchMessageSize条数据
-     *
-     * @author Barry
-     * @since 2021/6/28 17:08
-     **/
-    public void consumeHealthMessages() {
-        for (Subscriber<?> subscriber :
-                this.subscriptions) {
-            RStream<Object, Object> stream = subscriber.getStream();
-            RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
-                    stream.readGroupAsync(consumerGroup, consumer, config.getFetchMessageSize(), StreamMessageId.NEVER_DELIVERED);
-            future.thenAccept(res -> consumeMessages(res, subscriber)).exceptionally(exception -> {
-                log.info("consumeHealthMessages Exception:{}", exception.getMessage());
-                exception.printStackTrace();
-                return null;
-            });
-        }
-    }
-
-    /**
-     * 消费空闲超时信息进行重传
-     *
-     * @param idleIds 超时列表
-     * @author Barry
-     * @since 2021/6/28 18:36
-     **/
-    private void consumeIdleMessages(Set<StreamMessageId> idleIds, Subscriber<?> data) {
-        if (idleIds == null || idleIds.size() == 0) {
-            return;
-        }
-        RStream<Object, Object> stream = data.getStream();
-        RFuture<Map<StreamMessageId, Map<Object, Object>>> future =
-                stream.readGroupAsync(consumerGroup, consumer, StreamMessageId.ALL);
-        future.thenAccept(res -> {
-            Map<StreamMessageId, Map<Object, Object>> messages = res.entrySet().stream().
-                    filter(row -> idleIds.contains(row.getKey())).
-                    collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-            consumeMessages(messages, data);
-        }).exceptionally(exception -> {
-            log.info(exception.getMessage());
             return null;
         });
     }
@@ -290,7 +311,7 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/6/28 17:09
      **/
-    public void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, Subscriber<Object> subscriber) {
+    private void consumeMessage(StreamMessageId id, Map<Object, Object> dtoMap, Subscriber<Object> subscriber) {
         RStream<Object, Object> stream = subscriber.getStream();
         String lockName = consumerGroup + id.toString();
         RLock lock = client.getLock(lockName);
@@ -325,6 +346,23 @@ public class PullConsumerClient {
         }
     }
 
+    private String getRandConsumerName(Map<String, Long> consumerNames) {
+        List<Map.Entry<String, Long>> entries = consumerNames.entrySet().stream()
+                .filter(entry -> entry.getKey().equals(consumer))
+                .collect(Collectors.toList());
+
+        Random rand = new Random();
+        int i = rand.nextInt(entries.size());
+        return entries.get(i).getKey();
+    }
+
+    private void claim(List<PendingEntry> pendingEntries, String randConsumerName, RStream<Object, Object> stream) {
+        for (PendingEntry entry :
+                pendingEntries) {
+            StreamMessageId id = entry.getId();
+            stream.claimAsync(consumerGroup, randConsumerName, config.getClaimThreshold(), TimeUnit.MILLISECONDS, id, id);
+        }
+    }
 
     /**
      * 创建消费者组
@@ -349,46 +387,4 @@ public class PullConsumerClient {
         }
     }
 
-    public void start() {
-        ScheduledExecutorService service = Executors.newScheduledThreadPool(16);
-        service.scheduleAtFixedRate(
-                new PullHealthyMessagesScheduledExecutor(this),
-                1,
-                config.getPullHealthyMessagesPeriod(),
-                TimeUnit.SECONDS);
-        service.scheduleAtFixedRate(
-                new CheckPendingListScheduledExecutor(this),
-                1,
-                config.getCheckPendingListsPeriod(),
-                TimeUnit.SECONDS);
-
-    }
-
-    public static class Builder {
-
-        public Builder() {
-            
-        }
-
-        public Builder setRedissonClient(RedissonClient client) {
-            pullConsumerClient.client = client;
-            return this;
-        }
-
-        public Builder setService(String service) {
-            pullConsumerClient.consumerGroup = service;
-            return this;
-        }
-
-        public PullConsumerClient build() {
-            try {
-                pullConsumerClient.consumer = InetAddress.getLocalHost().toString();
-            } catch (UnknownHostException e) {
-                e.printStackTrace();
-            }
-            pullConsumerClient.subscriptions = new HashSet<>();
-            pullConsumerClient.createConsumerGroup(pullConsumerClient.config.getIsStartFromHead());
-            return pullConsumerClient;
-        }
-    }
 }

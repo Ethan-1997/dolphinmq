@@ -16,3 +16,5 @@ af:
     pullHealthyMessagesPeriod: 1
     #检查PendingList周期(单位秒)
     checkPendingListsPeriod: 10
+    #超过了该长度stream前面部分会被持久化（非严格模式——MAXLEN~）
+    trimThreshold: 10000

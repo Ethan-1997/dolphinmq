@@ -4,8 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * 〈一句话功能简述〉
- * 〈功能详细描述〉
+ * 启动类
  *
  * @author Barry
  * @since 2021/7/8 17:38

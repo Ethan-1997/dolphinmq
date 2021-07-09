@@ -1,94 +1,44 @@
 package com.flowyun.dolphinmq;
 
 import com.flowyun.dolphinmq.consumer.PullConsumerClient;
-import com.flowyun.dolphinmq.consumer.Subscriber;
-import com.flowyun.dolphinmq.utils.BeanMapUtils;
-import org.junit.jupiter.api.BeforeAll;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
-import org.redisson.api.StreamMessageId;
 import org.redisson.config.Config;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.beans.IntrospectionException;
-import java.lang.reflect.InvocationTargetException;
-import java.util.Map;
-import java.util.stream.Collectors;
+import org.springframework.boot.test.context.SpringBootTest;
 
 /**
+ * 消费者客户端测试
+ *
  * @author Barry
- * @since 2021/6/30 19:52
+ * @since 2021/7/6 15:09
  */
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Slf4j
+@SpringBootTest
 public class PullConsumerClientTest {
     private RedissonClient redisson;
-    private Logger logger;
-    PullConsumerClient pullConsumerClient;
 
-    @BeforeAll
-    void config() {
-        logger = LoggerFactory.getLogger(RedissonTest.class);
-        // 1. Create config object
+    @Test
+    void test() {
         Config config = new Config();
         config.useSingleServer().setAddress("redis://127.0.0.1:6379");
         redisson = Redisson.create(config);
 
-       /* pullConsumerClient = new PullConsumerClient(
-                redisson,
-                "service"
-        );
-        Subscriber<Testbean> t1 = pullConsumerClient.subscribe("t1");
+        HiListener<Testbean> hiListener = new HiListener<>();
 
-        HiListener hiListener = new HiListener();
-        Hi2Listener hi2Listener = new Hi2Listener();
-        t1.registerListener(hiListener);
-        t1.registerListener(hi2Listener);*/
+        new PullConsumerClient.Builder()
+                .setRedissonClient(redisson)
+                .setService("service")
+                .build()
+                .<Testbean>subscribe("t1")
+                .registerListener(hiListener)
+                .registerListener(hiListener)
+                .<Testbean>subscribe("t2")
+                .registerListener(hiListener)
+                .start();
+        while (true){
 
-
-//        topic.attach();
-    }
-
-    @Test
-    void consume() {
-        pullConsumerClient.consumeHealthMessages();
-        while (true) {
         }
     }
-
-    @Test
-    void checkPendingList() {
-        pullConsumerClient.checkPendingList();
-        while (true) {
-        }
-    }
-
-
-    @Test
-    void testIdempotent() {
-
-       /* try {
-            Map<Object, Object> hhhh = BeanMapUtils.toMap(new Testbean("hhhh", 23)).
-                    entrySet().stream().collect(Collectors.toMap(o -> (Object) o, e -> e));
-            pullConsumerClient.consumeMessage(
-                    new StreamMessageId(336715923374l, 2l),
-                    hhhh,
-                    new Subscriber<Object>("t1", redisson, this));
-        } catch (IntrospectionException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (InvocationTargetException e) {
-            e.printStackTrace();
-        }
-        while (true) {
-        }*/
-
-    }
-
-
-
-
 }

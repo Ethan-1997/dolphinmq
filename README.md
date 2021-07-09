@@ -15,20 +15,31 @@
 ## ☀️ Quick Start
 ### Producer
 ```java 
-Config config = new Config();
-config.useSingleServer().setAddress("redis://127.0.0.1:6379");
-RedissonClient redisson = Redisson.create(config);
+@SpringBootTest
+public class ProducerTest {
+    @Autowired
+    Producer producer;
 
-Producer producer = new Producer(redisson);
-Message msg = new Message();
-Testbean test = new Testbean("test", 13);
-msg.setTopic("t1");
-try {
-    msg.setProperties(BeanMapUtils.toMap(test));
-} catch (IntrospectionException | IllegalAccessException | InvocationTargetException e) {
-    e.printStackTrace();
+    @Test
+    void produce() throws InterruptedException {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://127.0.0.1:6379");
+        RedissonClient redisson = Redisson.create(config);
+        producer.setClient(redisson);
+        Message msg = new Message();
+        Testbean test = new Testbean("test", 13);
+        msg.setTopic("t1");
+        try {
+            msg.setProperties(BeanMapUtils.toMap(test));
+        } catch (IntrospectionException | IllegalAccessException | InvocationTargetException e) {
+            e.printStackTrace();
+        }
+        producer.sendMessageAsync(msg);
+        while(true){
+
+        }
+    }
 }
-producer.sendMessageAsync(msg);
 ```
 ### Consumer
 ```java 
@@ -74,7 +85,8 @@ af:
     pullHealthyMessagesPeriod: 1
     #检查PendingList周期(单位秒)
     checkPendingListsPeriod: 10
-
+    #超过了该长度stream前面部分会被持久化（非严格模式——MAXLEN~）
+    trimThreshold: 10000
 ```
 
 

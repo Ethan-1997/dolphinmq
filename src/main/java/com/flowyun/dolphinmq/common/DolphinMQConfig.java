@@ -1,14 +1,9 @@
 package com.flowyun.dolphinmq.common;
 
-import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.PropertySource;
-import org.springframework.stereotype.Component;
 
 /**
  * 配置文件
@@ -61,5 +56,10 @@ public class DolphinMQConfig {
      */
     @Value("${af.dolphinmq.checkPendingListsPeriod:10}")
     private Integer checkPendingListsPeriod;
+    /**
+     * 整理stream的最大上限
+     */
+    @Value("${af.dolphinmq.trimThreshold:10000}")
+    private Integer trimThreshold;
 
 }
