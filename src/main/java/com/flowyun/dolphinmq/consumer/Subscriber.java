@@ -18,8 +18,6 @@ import java.util.List;
  * @author Barry
  * @since 2021/7/6 9:34
  */
-@Getter
-@Setter
 public class Subscriber<T> {
     private RStream<Object, Object> stream;
     private String topicName;
@@ -70,14 +68,6 @@ public class Subscriber<T> {
         }
     }
 
-    /**
-     * 订阅主题
-     *
-     * @param topic 主题名
-     * @return 返回SubscriptionData
-     * @author Barry
-     * @since 2021/7/6 9:56
-     */
     public <T> Subscriber<T> subscribe(String topic) {
         return pullConsumerClient.subscribe(topic);
     }
@@ -86,4 +76,7 @@ public class Subscriber<T> {
         pullConsumerClient.start();
     }
 
+    public RStream<Object, Object> getStream() {
+        return stream;
+    }
 }

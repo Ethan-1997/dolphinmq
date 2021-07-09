@@ -5,19 +5,23 @@ import com.flowyun.dolphinmq.executor.CheckPendingListScheduledExecutor;
 import com.flowyun.dolphinmq.executor.PullHealthyMessagesScheduledExecutor;
 import com.flowyun.dolphinmq.utils.BeanMapUtils;
 import io.netty.util.internal.StringUtil;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.*;
 import org.redisson.api.stream.StreamAddArgs;
 import org.redisson.client.RedisBusyException;
-import org.yaml.snakeyaml.Yaml;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 import java.beans.IntrospectionException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -27,16 +31,29 @@ import java.util.stream.Collectors;
  * @since 2021/6/28 16:12
  */
 @Slf4j
-@Data
+@Getter
+@Setter
+@Component
 public class PullConsumerClient {
     private RedissonClient client;
     private RStream<Object, Object> deadStream;
     private String consumerGroup;
     private String consumer;
     private DolphinMQConfig config;
+    static PullConsumerClient pullConsumerClient;
     Set<Subscriber<?>> subscriptions;
 
     private static String DEAD_STREAM_NAME = "DeadStream";
+
+    @Autowired
+    public void setConfig(DolphinMQConfig config) {
+        this.config = config;
+    }
+
+    @Autowired
+    public void setPullConsumerClient(PullConsumerClient client) {
+        pullConsumerClient = client;
+    }
 
     /**
      * 订阅主题
@@ -347,36 +364,31 @@ public class PullConsumerClient {
 
     }
 
-    public PullConsumerClient setRedissonClient(RedissonClient client) {
-        this.client = client;
-        return this;
-    }
+    public static class Builder {
 
-    public PullConsumerClient setService(String service) {
-        this.consumerGroup = service;
-        createConsumerGroup(config.getIsStartFromHead());
-        return this;
-    }
-
-    public static PullConsumerClient builde() {
-        PullConsumerClient pullConsumerClient = new PullConsumerClient();
-
-        //读配置
-        Yaml yaml = new Yaml();
-        DolphinMQConfig config = yaml.loadAs(PullConsumerClient.class.getResourceAsStream("/dolphinmq-config.yml"),
-                DolphinMQConfig.class);
-        pullConsumerClient.setConfig(config);
-
-        //设置consumer
-        try {
-            pullConsumerClient.consumer = InetAddress.getLocalHost().toString();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
+        public Builder() {
+            
         }
 
-        pullConsumerClient.subscriptions = new HashSet<>();
-        return pullConsumerClient;
+        public Builder setRedissonClient(RedissonClient client) {
+            pullConsumerClient.client = client;
+            return this;
+        }
+
+        public Builder setService(String service) {
+            pullConsumerClient.consumerGroup = service;
+            return this;
+        }
+
+        public PullConsumerClient build() {
+            try {
+                pullConsumerClient.consumer = InetAddress.getLocalHost().toString();
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
+            }
+            pullConsumerClient.subscriptions = new HashSet<>();
+            pullConsumerClient.createConsumerGroup(pullConsumerClient.config.getIsStartFromHead());
+            return pullConsumerClient;
+        }
     }
-
-
 }

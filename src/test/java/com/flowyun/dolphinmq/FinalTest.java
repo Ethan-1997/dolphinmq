@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
+import org.springframework.boot.test.context.SpringBootTest;
 
 /**
  * 〈一句话功能简述〉
@@ -15,6 +16,7 @@ import org.redisson.config.Config;
  * @since 2021/7/6 15:09
  */
 @Slf4j
+@SpringBootTest
 public class FinalTest {
     private RedissonClient redisson;
 
@@ -26,16 +28,17 @@ public class FinalTest {
 
         HiListener<Testbean> hiListener = new HiListener<>();
 
-        PullConsumerClient.builde()
+        new PullConsumerClient.Builder()
                 .setRedissonClient(redisson)
                 .setService("service")
+                .build()
                 .<Testbean>subscribe("t1")
                 .registerListener(hiListener)
                 .registerListener(hiListener)
                 .<Testbean>subscribe("t2")
                 .registerListener(hiListener)
                 .start();
-        while (true) {
+        while (true){
 
         }
     }
