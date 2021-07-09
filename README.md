@@ -38,9 +38,10 @@ redisson = Redisson.create(config);
 
 HiListener<Testbean> hiListener = new HiListener<>();
 
-PullConsumerClient.builde()
+new PullConsumerClient.Builder()
         .setRedissonClient(redisson)
         .setService("service")
+        .build()
         .<Testbean>subscribe("t1")
         .registerListener(hiListener)
         .registerListener(hiListener)
@@ -51,26 +52,29 @@ PullConsumerClient.builde()
 ## 🎈 Configuration
 ### 配置文件
 ```
-dolphinmq-config.yml
+application.yml
 ```
 ### 配置项
 ```
-# 每次拉取数据的量
-fetchMessageSize: 5
-#检查consumer不活跃的门槛（单位秒）
-pendingListIdleThreshold: 10
-#每次拉取PendingList的大小
-checkPendingListSize: 1000
-#死信门槛（计次器次数）
-deadLetterThreshold: 32
-#认领门槛(单位毫秒)
-claimThreshold: 3600
-#是否从头开始订阅消息
-isStartFromHead: "true"
-#拉取信息的周期(单位秒)
-pullHealthyMessagesPeriod: 1
-#检查PendingList周期(单位秒)
-checkPendingListsPeriod: 10
+af:
+  dolphinmq:
+    # 每次拉取数据的量
+    fetchMessageSize: 5
+    #检查consumer不活跃的门槛（单位秒）
+    pendingListIdleThreshold: 10
+    #每次拉取PendingList的大小
+    checkPendingListSize: 1000
+    #死信门槛（计次器次数）
+    deadLetterThreshold: 32
+    #认领门槛(单位毫秒)
+    claimThreshold: 3600
+    #是否从头开始订阅消息
+    isStartFromHead: true
+    #拉取信息的周期(单位秒)
+    pullHealthyMessagesPeriod: 1
+    #检查PendingList周期(单位秒)
+    checkPendingListsPeriod: 10
+
 ```
 
 
