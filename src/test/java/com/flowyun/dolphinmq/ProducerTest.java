@@ -32,7 +32,7 @@ public class ProducerTest {
         producer.setClient(redisson);
         Message msg = new Message();
         Testbean test = new Testbean("test", 13);
-        msg.setTopic("t1");
+        msg.setTopic("t2");
         try {
             msg.setProperties(BeanMapUtils.toMap(test));
         } catch (IntrospectionException | IllegalAccessException | InvocationTargetException e) {

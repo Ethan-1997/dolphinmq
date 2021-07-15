@@ -31,9 +31,6 @@ public class PullConsumerClientTest {
                 .setRedissonClient(redisson)
                 .setService("service")
                 .build()
-                .<Testbean>subscribe("t1")
-                .registerListener(hiListener)
-                .registerListener(hiListener)
                 .<Testbean>subscribe("t2")
                 .registerListener(hiListener)
                 .start();

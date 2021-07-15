@@ -77,7 +77,6 @@ public class PullConsumerClient {
                 e.printStackTrace();
             }
             pullConsumerClient.subscriptions = new HashSet<>();
-            pullConsumerClient.createConsumerGroup(pullConsumerClient.config.getIsStartFromHead());
             return pullConsumerClient;
         }
 
@@ -104,6 +103,7 @@ public class PullConsumerClient {
     public <T> Subscriber<T> subscribe(String topic) {
         Subscriber<T> subscriber = new Subscriber<>(topic, client, this);
         subscriptions.add(subscriber);
+        pullConsumerClient.createConsumerGroup(pullConsumerClient.config.getIsStartFromHead(), subscriber);
         return subscriber;
     }
 
@@ -371,19 +371,16 @@ public class PullConsumerClient {
      * @author Barry
      * @since 2021/7/1 14:36
      **/
-    private void createConsumerGroup(boolean startFromHead) {
-        for (Subscriber<?> data :
-                subscriptions) {
-            RStream<Object, Object> stream = data.getStream();
-            StreamMessageId id = StreamMessageId.NEWEST;
-            if (startFromHead) {
-                id = StreamMessageId.ALL;
-            }
-            try {
-                stream.createGroupAsync(consumerGroup, id);
-            } catch (RedisBusyException e) {
-                log.info(e.getMessage());
-            }
+    private void createConsumerGroup(boolean startFromHead, Subscriber<?> subscriber) {
+        RStream<Object, Object> stream = subscriber.getStream();
+        StreamMessageId id = StreamMessageId.NEWEST;
+        if (startFromHead) {
+            id = StreamMessageId.ALL;
+        }
+        try {
+            stream.createGroup(consumerGroup, id);
+        } catch (RedisBusyException e) {
+            log.info(e.getMessage());
         }
     }
 
